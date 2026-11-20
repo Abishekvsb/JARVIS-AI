@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS — Advanced Personal AI Assistant HUD</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="theme-jarvis">
+  <div class="hud-scanline"></div>
+  <div class="hud-container">
+
+    <!-- TOP HUD HEADER BAR -->
+    <header class="hud-header">
+      <div class="header-left">
+        <div class="stark-badge">
+          <span class="badge-icon">◈</span>
+          <span class="badge-text">STARK INDUSTRIES</span>
+          <span class="badge-sub">MARK VII // HUD OS</span>
+        </div>
+        <div class="header-title">
+          <h1 class="glow-text">J.A.R.V.I.S.</h1>
+          <span class="version-tag">v6.0 AUTOMATION HUD</span>
+        </div>
+      </div>
+
+      <!-- Real-time Quick Telemetry Strip -->
+      <div class="header-telemetry">
+        <div class="telemetry-pill" id="cpu-pill">
+          <span class="pill-label">CPU</span>
+          <span class="pill-val glow-cyan" id="quick-cpu">--%</span>
+        </div>
+        <div class="telemetry-pill" id="ram-pill">
+          <span class="pill-label">RAM</span>
+          <span class="pill-val glow-cyan" id="quick-ram">--%</span>
+        </div>
+        <div class="telemetry-pill" id="bat-pill">
+          <span class="pill-label">BATTERY</span>
+          <span class="pill-val glow-cyan" id="quick-bat">--%</span>
+        </div>
+        <div class="telemetry-pill" id="disk-pill">
+          <span class="pill-label">DRIVE D:</span>
+          <span class="pill-val glow-cyan" id="quick-disk">-- GB</span>
+        </div>
+      </div>
+
+      <!-- Emergency Stop & Controls -->
+      <div class="header-actions">
+        <button id="btn-emergency-stop" class="btn-emergency glow-red" title="Immediate Kill-Switch: Halts all ongoing automation">
+          <span class="emergency-icon">⚠</span>
+          <span class="emergency-text">EMERGENCY STOP</span>
+        </button>
+        <button id="btn-reset-stop" class="btn-reset" title="Reset Emergency Kill-Switch" style="display: none;">
+          <span class="reset-icon">↺</span>
+          <span>RESET KILLSWITCH</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN THREE-COLUMN HUD GRID -->
+    <main class="hud-main">
+
+      <!-- LEFT COLUMN: SYSTEM TELEMETRY & HARDWARE -->
+      <aside class="hud-panel panel-left">
+        <div class="panel-header">
+          <span class="panel-bracket">[</span>
+          <h2>SYSTEM TELEMETRY</h2>
+          <span class="panel-bracket">]</span>
+        </div>
+
+        <div class="telemetry-gauges">
+          <!-- CPU Gauge Card -->
+          <div class="gauge-card">
+            <div class="gauge-title-row">
+              <span class="gauge-name">PROCESSOR LOAD</span>
+              <span class="gauge-value glow-cyan" id="cpu-percent">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="cpu-bar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Memory Gauge Card -->
+          <div class="gauge-card">
+            <div class="gauge-title-row">
+              <span class="gauge-name">MEMORY ALLOCATION</span>
+              <span class="gauge-value glow-cyan" id="ram-percent">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar glow-blue" id="ram-bar" style="width: 0%;"></div>
+            </div>
+            <div class="gauge-sub-row">
+              <span id="ram-details">0.0 GB / 0.0 GB Used</span>
+            </div>
+          </div>
+
+          <!-- Battery Gauge Card -->
+          <div class="gauge-card">
+            <div class="gauge-title-row">
+              <span class="gauge-name">POWER CELLS</span>
+              <span class="gauge-value glow-cyan" id="battery-status">Detecting...</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar glow-green" id="battery-bar" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Storage Gauge Card -->
+          <div class="gauge-card">
+            <div class="gauge-title-row">
+              <span class="gauge-name">JARVIS STORAGE (D:)</span>
+              <span class="gauge-value glow-cyan" id="disk-free">227.9 GB</span>
+            </div>
+            <div class="gauge-sub-row">
+              <span class="text-dim">Operating root: D:\JARVIS</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hardware & Environment Diagnostics -->
+        <div class="panel-header header-secondary">
+          <span class="panel-bracket">[</span>
+          <h2>HARDWARE MATRIX</h2>
+          <span class="panel-bracket">]</span>
+        </div>
+        <div class="hardware-diagnostics">
+          <div class="diag-row">
+            <span class="diag-label">AUDIO IN:</span>
+            <span class="diag-val" id="diag-mic">Intel® Smart Sound Array</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">AUDIO OUT:</span>
+            <span class="diag-val" id="diag-speaker">Realtek® Audio (Neural TTS)</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">AI ENGINE:</span>
+            <span class="diag-val glow-cyan">Claude 3.5 Sonnet / Local</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">LANGUAGES:</span>
+            <span class="diag-val">EN • தமிழ் • Tanglish</span>
+          </div>
+          <div class="diag-row">
+            <span class="diag-label">SECURITY:</span>
+            <span class="diag-val glow-green">Sandbox & Kill-Switch Active</span>
+          </div>
+        </div>
+
+        <!-- Voice Toggle Control -->
+        <div class="voice-toggle-card">
+          <label class="toggle-switch">
+            <input type="checkbox" id="chk-voice-output" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-label">Voice Response Spoken Aloud</span>
+        </div>
+      </aside>
+
+      <!-- CENTER COLUMN: CENTRAL ARC REACTOR & VOICE CONTROLS -->
+      <section class="hud-panel panel-center">
+        <!-- Live AI State Display -->
+        <div class="state-banner-container">
+          <div class="state-badge glow-cyan" id="ai-state-badge">
+            <span class="state-pulse-dot" id="state-dot">●</span>
+            <span class="state-text" id="ai-state-text">SYSTEM ONLINE: IDLE</span>
+          </div>
+          <div class="state-submessage" id="ai-state-submessage">
+            All systems operational. Standing by, Sir.
+          </div>
+        </div>
+
+        <!-- Central Arc Reactor Visualization -->
+        <div class="reactor-wrapper">
+          <div class="reactor-hologram-glow" id="reactor-glow"></div>
+          <svg class="arc-reactor-svg" viewBox="0 0 400 400" id="arc-reactor">
+            <defs>
+              <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+                <stop offset="25%" stop-color="#00f0ff" stop-opacity="0.9" />
+                <stop offset="60%" stop-color="#0066ff" stop-opacity="0.5" />
+                <stop offset="100%" stop-color="#020816" stop-opacity="0" />
+              </radialGradient>
+              <radialGradient id="emergencyGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+                <stop offset="30%" stop-color="#ff2040" stop-opacity="0.9" />
+                <stop offset="70%" stop-color="#800010" stop-opacity="0.6" />
+                <stop offset="100%" stop-color="#1a0004" stop-opacity="0" />
+              </radialGradient>
+              <filter id="neonBlur" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+
+            <!-- Outer Compass Frame -->
+            <circle cx="200" cy="200" r="190" class="ring-compass" />
+            <circle cx="200" cy="200" r="182" class="ring-ticks" stroke-dasharray="2, 6" />
+
+            <!-- Segmented Outer Ring (Counter-Clockwise Spin) -->
+            <g class="ring-group ring-outer-segments" id="reactor-outer-ring">
+              <circle cx="200" cy="200" r="165" class="segment-circle" stroke-dasharray="40, 15, 20, 15" />
+              <circle cx="200" cy="200" r="150" class="segment-circle-thin" stroke-dasharray="8, 12" />
+            </g>
+
+            <!-- Middle Palladium Coils (10 Power Nodes) -->
+            <g class="reactor-nodes" id="reactor-coils">
+              <!-- Dynamically populated or rendered 10 radial coil bars -->
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(0 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(36 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(72 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(108 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(144 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(180 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(216 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(252 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(288 200 200)" />
+              <rect x="194" y="50" width="12" height="24" rx="2" class="coil-node" transform="rotate(324 200 200)" />
+            </g>
+
+            <!-- Inner Toothed Ring (Clockwise Spin) -->
+            <g class="ring-group ring-inner-toothed" id="reactor-inner-ring">
+              <circle cx="200" cy="200" r="110" class="ring-inner-circle" stroke-dasharray="16, 10, 30, 8" />
+              <circle cx="200" cy="200" r="85" class="ring-core-boundary" stroke-dasharray="6, 6" />
+            </g>
+
+            <!-- Core Triangle Energy Iris -->
+            <polygon points="200,135 255,230 145,230" class="core-triangle" id="reactor-triangle" />
+            <polygon points="200,265 145,170 255,170" class="core-triangle-inverted" id="reactor-triangle-inverted" />
+
+            <!-- Radiant Core Glow -->
+            <circle cx="200" cy="200" r="65" class="reactor-core-glow" id="core-glow-element" fill="url(#coreGlow)" filter="url(#neonBlur)" />
+            <circle cx="200" cy="200" r="28" class="reactor-center-iris" id="reactor-center" />
+          </svg>
+        </div>
+
+        <!-- Audio Waveform Visualizer Canvas -->
+        <div class="waveform-container">
+          <canvas id="waveform-canvas" width="460" height="48"></canvas>
+        </div>
+
+        <!-- Voice Interaction Control Center -->
+        <div class="voice-controls-row">
+          <button id="btn-push-to-talk" class="btn-ptt glow-cyan" title="Click or Press SPACE to Speak">
+            <span class="mic-icon">🎙</span>
+            <span class="ptt-text" id="ptt-label">PUSH TO TALK (SPACE)</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: NEURAL CHAT & AUTOMATION ACTIVITY -->
+      <aside class="hud-panel panel-right">
+        <!-- Top Half: Neural Chat Stream -->
+        <div class="chat-section">
+          <div class="panel-header">
+            <span class="panel-bracket">[</span>
+            <h2>NEURAL INTERFACE CHAT</h2>
+            <span class="panel-bracket">]</span>
+          </div>
+
+          <div class="chat-messages" id="chat-messages">
+            <!-- Initial Greeting Bubble -->
+            <div class="chat-bubble bubble-jarvis">
+              <div class="bubble-header">
+                <span class="bubble-author glow-cyan">J.A.R.V.I.S.</span>
+                <span class="bubble-time" id="welcome-time">11:00</span>
+              </div>
+              <div class="bubble-content">
+                Good day, Sir. All desktop automation and voice systems are online. How may I be of assistance today?
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Input Row -->
+          <form id="chat-form" class="chat-input-bar">
+            <input
+              type="text"
+              id="chat-input"
+              class="hud-input"
+              placeholder="Type in English, Tanglish, or தமிழ்..."
+              autocomplete="off"
+            />
+            <button type="submit" id="btn-send-chat" class="btn-send glow-cyan" title="Send message (Enter)">
+              <span>SEND</span>
+              <span class="send-arrow">▶</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Bottom Half: Automation Activity & Audit Feed -->
+        <div class="automation-section">
+          <div class="panel-header">
+            <span class="panel-bracket">[</span>
+            <h2>AUTOMATION ACTIVITY FEED</h2>
+            <span class="panel-bracket">]</span>
+            <button id="btn-clear-activity" class="btn-clear-log" title="Clear visual activity feed">CLR</button>
+          </div>
+
+          <!-- Active Action Highlight -->
+          <div class="active-action-banner" id="active-action-banner" style="display: none;">
+            <div class="active-badge glow-gold">ACTIVE TASK</div>
+            <div class="active-desc" id="active-action-text">No active automation task.</div>
+          </div>
+
+          <!-- Real-Time Activity Log Cards -->
+          <div class="activity-feed" id="activity-feed">
+            <div class="activity-placeholder" id="activity-placeholder">
+              Ready for Windows automation commands (e.g. screenshot, notepad dictation, web search, volume).
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+
+    <!-- FOOTER STATUS BAR -->
+    <footer class="hud-footer">
+      <div class="footer-left">
+        <span class="status-indicator-dot online"></span>
+        <span class="footer-status-text" id="footer-conn-status">NEURAL LINK CONNECTED [127.0.0.1]</span>
+      </div>
+      <div class="footer-center">
+        <span>PRESS <kbd>SPACE</kbd> TO SPEAK • <kbd>ENTER</kbd> TO CHAT • <kbd>ESC</kbd> FOR EMERGENCY STOP</span>
+      </div>
+      <div class="footer-right">
+        <span id="footer-time">00:00:00</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+

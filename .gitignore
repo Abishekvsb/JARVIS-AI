@@ -1,0 +1,24 @@
+# Environments and Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Caches and Temporary Files
+.cache/
+__pycache__/
+*.py[cod]
+*$py.class
+*.tmp
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
