@@ -22,3 +22,12 @@ build/
 dist/
 *.egg-info/
 
+# Binaries and Runtimes
+ollama/
+
+# Logs, Screenshots and Runtime Sentinels
+logs/
+screenshots/
+.emergency_stop
+
+

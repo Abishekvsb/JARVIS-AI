@@ -55,6 +55,10 @@ class UIStateManager:
         try:
             self.telemetry_cache = get_system_telemetry()
             self.telemetry_cache["emergency_stop"] = EmergencyStopManager.get_instance().is_stopped()
+            from jarvis.config import get_config
+            cfg = get_config()
+            self.telemetry_cache["ai_provider"] = getattr(cfg, "ai_provider", "ollama").upper()
+            self.telemetry_cache["ai_model"] = getattr(cfg, "ollama_model", "qwen2.5:1.5b")
         except Exception as e:
             logger.error(f"Failed to fetch system telemetry: {e}")
         return self.telemetry_cache

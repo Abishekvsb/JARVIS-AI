@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#00e5ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>JARVIS — Advanced Personal AI Assistant HUD</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body class="theme-jarvis">
@@ -41,6 +46,10 @@
         <div class="telemetry-pill" id="disk-pill">
           <span class="pill-label">DRIVE D:</span>
           <span class="pill-val glow-cyan" id="quick-disk">-- GB</span>
+        </div>
+        <div class="telemetry-pill mobile-pill" id="mobile-pill" title="Click to view mobile pairing link">
+          <span class="pill-label">📱 MOBILE</span>
+          <span class="pill-val glow-cyan" id="quick-mobile">WI-FI LINK</span>
         </div>
       </div>
 
@@ -134,7 +143,7 @@
           </div>
           <div class="diag-row">
             <span class="diag-label">AI ENGINE:</span>
-            <span class="diag-val glow-cyan">Claude 3.5 Sonnet / Local</span>
+            <span class="diag-val glow-cyan" id="diag-ai-engine">OLLAMA LOCAL (qwen2.5:1.5b)</span>
           </div>
           <div class="diag-row">
             <span class="diag-label">LANGUAGES:</span>
@@ -326,6 +335,41 @@
       </div>
     </footer>
 
+  </div>
+
+  <!-- MOBILE PAIRING MODAL -->
+  <div class="modal-overlay" id="modal-pairing" style="display: none;">
+    <div class="modal-card glow-cyan-box">
+      <div class="modal-header">
+        <span class="modal-icon">🔒</span>
+        <h3>SECURITY CLEARANCE REQUIRED</h3>
+      </div>
+      <p class="modal-subtitle">STARK PROTOCOL // REMOTE DEVICE AUTHENTICATION</p>
+      <p class="modal-desc">Enter the 6-digit Security PIN displayed on your Laptop HUD console to authorize this mobile connection.</p>
+      <div class="pin-input-group">
+        <input type="password" id="input-pairing-pin" maxlength="6" inputmode="numeric" placeholder="● ● ● ● ● ●" autocomplete="off" />
+        <button id="btn-submit-pin" class="btn-primary glow-cyan">AUTHENTICATE</button>
+      </div>
+      <div class="modal-error" id="pairing-error" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- TIER B ACTION CONFIRMATION MODAL -->
+  <div class="modal-overlay" id="modal-confirm" style="display: none;">
+    <div class="modal-card glow-gold-box">
+      <div class="modal-header">
+        <span class="modal-icon">⚠️</span>
+        <h3>AUTHORIZATION CONFIRMATION</h3>
+      </div>
+      <p class="modal-subtitle">RULE 4: EXPLICIT ACTION PREVIEW</p>
+      <div class="confirm-details" id="confirm-details">
+        <!-- Dynamic preview -->
+      </div>
+      <div class="confirm-actions">
+        <button id="btn-deny-action" class="btn-deny">DENY</button>
+        <button id="btn-allow-action" class="btn-allow glow-gold">ALLOW ONCE</button>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>

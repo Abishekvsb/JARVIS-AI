@@ -21,6 +21,7 @@ from typing import Optional
 import uvicorn
 
 from jarvis.config import JARVIS_ROOT
+from jarvis.ui.auth import MobileAuthManager, get_local_network_ip
 from jarvis.ui.server import create_ui_app
 
 logger = logging.getLogger("jarvis.ui.launcher")
@@ -73,19 +74,28 @@ def run_server(host: str, port: int) -> None:
 
 
 def launch_desktop_ui(
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8000,
     open_window: bool = True,
     block: bool = True,
 ) -> int:
-    """Launch the JARVIS Futuristic Desktop UI.
+    """Launch the JARVIS Futuristic Desktop UI & Mobile Access Engine.
 
     Returns the port number used.
     """
     actual_port = find_free_port(port)
-    url = f"http://{host}:{actual_port}"
+    local_ip = get_local_network_ip()
+    local_url = f"http://127.0.0.1:{actual_port}"
+    mobile_url = f"http://{local_ip}:{actual_port}"
+    auth_mgr = MobileAuthManager.get_instance()
 
-    print(f"\n[JARVIS] Starting Futuristic Desktop UI Engine on {url} ...")
+    print("\n" + "=" * 68)
+    print("  JARVIS FUTURISTIC HUD & MOBILE ACCESS ONLINE")
+    print("=" * 68)
+    print(f"  Desktop Interface : {local_url}")
+    print(f"  Mobile Wi-Fi URL  : {mobile_url}")
+    print(f"  Mobile Access PIN : {auth_mgr.pairing_pin}")
+    print("=" * 68 + "\n")
 
     # Start FastAPI server in background thread
     server_thread = threading.Thread(
@@ -99,15 +109,16 @@ def launch_desktop_ui(
     max_wait = 5.0
     start_time = time.time()
     server_up = False
+    check_host = "127.0.0.1" if host == "0.0.0.0" else host
     while time.time() - start_time < max_wait:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex((host, actual_port)) == 0:
+            if s.connect_ex((check_host, actual_port)) == 0:
                 server_up = True
                 break
         time.sleep(0.1)
 
     if not server_up:
-        print(f"[JARVIS] Warning: Server on {url} took longer than expected to start.")
+        print(f"[JARVIS] Warning: Server on {local_url} took longer than expected to start.")
 
     browser_proc = None
     if open_window:
@@ -119,7 +130,7 @@ def launch_desktop_ui(
             # Edge / Chrome App Mode parameters
             app_args = [
                 str(browser_exe),
-                f"--app={url}",
+                f"--app={local_url}",
                 "--window-size=1260,820",
                 "--window-position=120,60",
                 f"--user-data-dir={hud_cache}",
@@ -128,12 +139,13 @@ def launch_desktop_ui(
                 browser_proc = subprocess.Popen(app_args)
             except Exception as e:
                 print(f"[JARVIS] App mode launch failed: {e}. Opening in default browser...")
-                webbrowser.open(url)
+                webbrowser.open(local_url)
         else:
             print("[JARVIS] Opening HUD in default browser...")
-            webbrowser.open(url)
+            webbrowser.open(local_url)
 
-    print(f"[JARVIS] Desktop HUD Active: {url}")
+    print(f"[JARVIS] Desktop HUD Active: {local_url}")
+    print(f"[JARVIS] Mobile Access Link : {mobile_url} (PIN: {auth_mgr.pairing_pin})")
     print("[JARVIS] Press Ctrl+C in this console to shut down the HUD.")
 
     if block:
@@ -152,8 +164,8 @@ def launch_desktop_ui(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="JARVIS Futuristic Desktop UI")
-    parser.add_argument("--host", default="127.0.0.1", help="Host address")
+    parser = argparse.ArgumentParser(description="JARVIS Futuristic Desktop UI & Mobile Access")
+    parser.add_argument("--host", default="0.0.0.0", help="Host address (0.0.0.0 allows Wi-Fi mobile access)")
     parser.add_argument("--port", type=int, default=8000, help="Base TCP port")
     parser.add_argument("--no-browser", action="store_true", help="Start server only without launching browser")
     args = parser.parse_args()

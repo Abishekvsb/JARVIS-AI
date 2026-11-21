@@ -71,6 +71,10 @@ class JarvisConfig:
     security_mode: str
     project_root: Path
     cache_root: Path
+    ai_provider: str = "ollama"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:1.5b"
+    ollama_models_dir: Path = CACHE_DIR / "ollama"
 
     @property
     def is_api_key_valid(self) -> bool:
@@ -89,6 +93,9 @@ def get_config() -> JarvisConfig:
     """Retrieve and validate the current JARVIS configuration."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     model = os.environ.get("CLAUDE_MODEL", DEFAULT_MODEL).strip()
+    ai_provider = os.environ.get("AI_PROVIDER", "ollama").strip().lower()
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip()
+    ollama_model = os.environ.get("OLLAMA_MODEL", "qwen2.5:1.5b").strip()
 
     # Fallback to default if model is empty or unrecognized
     if model not in SUPPORTED_CLAUDE_MODELS:
@@ -104,5 +111,9 @@ def get_config() -> JarvisConfig:
         security_mode=security_mode,
         project_root=JARVIS_ROOT,
         cache_root=CACHE_DIR,
+        ai_provider=ai_provider,
+        ollama_base_url=ollama_base_url,
+        ollama_model=ollama_model,
+        ollama_models_dir=CACHE_DIR / "ollama",
     )
 

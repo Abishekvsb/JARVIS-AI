@@ -67,6 +67,99 @@
   updateClock();
 
   // -------------------------------------------------------------------------
+  // PHASE 8: AUTHENTICATION, MOBILE INFO & SERVICE WORKER
+  // -------------------------------------------------------------------------
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch((e) => console.log('[PWA] SW register error:', e));
+    });
+  }
+
+  function getAuthToken() {
+    return localStorage.getItem('jarvis_token') || '';
+  }
+
+  function authFetch(url, options = {}) {
+    options.headers = options.headers || {};
+    const token = getAuthToken();
+    if (token) {
+      if (options.headers instanceof Headers) {
+        options.headers.set('X-Jarvis-Token', token);
+      } else {
+        options.headers['X-Jarvis-Token'] = token;
+      }
+    }
+    return fetch(url, options);
+  }
+
+  async function checkAuthAndMobileInfo() {
+    try {
+      const res = await authFetch('/api/mobile/info');
+      const info = await res.json();
+
+      const quickMobile = document.getElementById('quick-mobile');
+      if (quickMobile && info.local_ip) {
+        const port = window.location.port ? `:${window.location.port}` : '';
+        const pinPart = info.pairing_pin ? ` | PIN: ${info.pairing_pin}` : '';
+        quickMobile.textContent = `${info.local_ip}${port}${pinPart}`;
+      }
+
+      const modalPairing = document.getElementById('modal-pairing');
+      if (modalPairing) {
+        if (!info.authenticated) {
+          modalPairing.style.display = 'flex';
+        } else {
+          modalPairing.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      console.warn('[HUD] Mobile info lookup failed:', e);
+    }
+  }
+
+  const btnSubmitPin = document.getElementById('btn-submit-pin');
+  const inputPairingPin = document.getElementById('input-pairing-pin');
+  const pairingError = document.getElementById('pairing-error');
+
+  if (btnSubmitPin && inputPairingPin) {
+    async function submitPin() {
+      const pin = inputPairingPin.value.trim();
+      if (!pin) return;
+      try {
+        const res = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: pin }),
+        });
+        const data = await res.json();
+        if (data.status === 'success' && data.token) {
+          localStorage.setItem('jarvis_token', data.token);
+          document.cookie = `jarvis_token=${data.token}; path=/; max-age=172800; SameSite=Lax`;
+          const modalPairing = document.getElementById('modal-pairing');
+          if (modalPairing) modalPairing.style.display = 'none';
+          addChatMessage('J.A.R.V.I.S.', 'Security clearance accepted. Neural link authorized for this device.', false);
+          connectWebSocket();
+        } else {
+          if (pairingError) {
+            pairingError.textContent = data.message || 'Invalid PIN. Access denied.';
+            pairingError.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        if (pairingError) {
+          pairingError.textContent = 'Connection error. Check network connection.';
+          pairingError.style.display = 'block';
+        }
+      }
+    }
+
+    btnSubmitPin.addEventListener('click', submitPin);
+    inputPairingPin.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitPin();
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // WEBSOCKET MANAGEMENT
   // -------------------------------------------------------------------------
   function connectWebSocket() {
@@ -173,6 +266,12 @@
     if (t.disk_d_free_gb) {
       if (quickDisk) quickDisk.textContent = t.disk_d_free_gb;
       if (diskFree) diskFree.textContent = t.disk_d_free_gb;
+    }
+
+    // AI Engine in diagnostics
+    const diagAi = document.getElementById('diag-ai-engine');
+    if (diagAi && t.ai_provider) {
+      diagAi.textContent = `${t.ai_provider} (${t.ai_model || 'qwen2.5:1.5b'})`;
     }
   }
 
@@ -347,7 +446,7 @@
 
       // Call API
       try {
-        const res = await fetch('/api/chat', {
+        const res = await authFetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -355,6 +454,13 @@
             speak: chkVoiceOutput ? chkVoiceOutput.checked : true,
           }),
         });
+
+        if (res.status === 401) {
+          const modalPairing = document.getElementById('modal-pairing');
+          if (modalPairing) modalPairing.style.display = 'flex';
+          addChatMessage('SYSTEM', 'Device pairing required. Enter PIN to continue.', false);
+          return;
+        }
 
         const data = await res.json();
         if (data.reply) {
@@ -368,8 +474,12 @@
   }
 
   // -------------------------------------------------------------------------
-  // VOICE PUSH-TO-TALK
+  // VOICE PUSH-TO-TALK (DESKTOP & MOBILE MEDIA RECORDER)
   // -------------------------------------------------------------------------
+  let mediaRecorder = null;
+  let audioChunks = [];
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
   async function triggerPushToTalk() {
     if (isListening) return;
     isListening = true;
@@ -377,7 +487,7 @@
     setAiState('LISTENING', 'Microphone active. Recording speech...');
 
     try {
-      const res = await fetch('/api/voice/listen', {
+      const res = await authFetch('/api/voice/listen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -403,9 +513,73 @@
   }
 
   if (btnPtt) {
-    btnPtt.addEventListener('click', () => {
-      triggerPushToTalk();
-    });
+    if (isTouchDevice && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // Mobile Touch PTT: Record directly from mobile mic
+      btnPtt.addEventListener('touchstart', async (e) => {
+        e.preventDefault();
+        if (isListening) return;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
+          mediaRecorder.start();
+          isListening = true;
+          btnPtt.classList.add('touch-ptt-active');
+          setAiState('LISTENING', 'Mobile microphone recording...');
+        } catch (err) {
+          console.error('[MOBILE VOICE] Mic access denied:', err);
+          addChatMessage('SYSTEM', `Microphone access denied: ${err.message}`, false);
+        }
+      });
+
+      btnPtt.addEventListener('touchend', async (e) => {
+        e.preventDefault();
+        if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+        btnPtt.classList.remove('touch-ptt-active');
+        setAiState('PROCESSING', 'Processing mobile voice stream...');
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'mobile_speech.webm');
+          formData.append('speak', chkVoiceOutput ? chkVoiceOutput.checked : true);
+
+          try {
+            const res = await authFetch('/api/voice/mobile-upload', {
+              method: 'POST',
+              body: formData,
+            });
+            const data = await res.json();
+            if (data.user_text) {
+              addChatMessage(`YOU (MOBILE)`, data.user_text, true);
+            }
+            if (data.reply) {
+              addChatMessage('J.A.R.V.I.S.', data.reply, false);
+            }
+            if (data.audio_url) {
+              const replyAudio = new Audio(data.audio_url);
+              replyAudio.play().catch((e) => console.log('[MOBILE AUDIO] Autoplay blocked:', e));
+            }
+          } catch (err) {
+            console.error('[MOBILE VOICE] Upload error:', err);
+            addChatMessage('SYSTEM', `Voice upload error: ${err.message}`, false);
+          } finally {
+            isListening = false;
+          }
+        };
+
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+      });
+    } else {
+      // Desktop Click PTT
+      btnPtt.addEventListener('click', () => {
+        triggerPushToTalk();
+      });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -413,7 +587,7 @@
   // -------------------------------------------------------------------------
   async function triggerEmergencyStop() {
     try {
-      const res = await fetch('/api/emergency-stop/trigger', { method: 'POST' });
+      const res = await authFetch('/api/emergency-stop/trigger', { method: 'POST' });
       const data = await res.json();
       setEmergencyStopUI(true);
       addChatMessage('SYSTEM ALERT', data.message || 'EMERGENCY STOP ACTIVATED.', false);
@@ -424,7 +598,7 @@
 
   async function resetEmergencyStop() {
     try {
-      const res = await fetch('/api/emergency-stop/reset', { method: 'POST' });
+      const res = await authFetch('/api/emergency-stop/reset', { method: 'POST' });
       const data = await res.json();
       setEmergencyStopUI(false);
       setAiState('IDLE', 'Emergency stop reset. Systems restored.');
@@ -525,7 +699,8 @@
     });
   }
 
-  // Connect on load
+  // Check mobile pairing & connect on load
+  checkAuthAndMobileInfo();
   connectWebSocket();
 
 })();

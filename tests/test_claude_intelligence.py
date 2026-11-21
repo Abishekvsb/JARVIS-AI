@@ -22,7 +22,9 @@ class TestClaudeIntelligence(unittest.TestCase):
     """Test suite for Claude AI integration and conversational intelligence."""
 
     def setUp(self) -> None:
-        self.config = get_config()
+        raw_cfg = get_config()
+        from dataclasses import replace
+        self.config = replace(raw_cfg, ai_provider="anthropic")
         self.system_prompt = get_system_prompt()
 
     def test_01_config_and_credential_masking(self) -> None:

@@ -7,17 +7,29 @@ from contextlib import asynccontextmanager
 import logging
 import mimetypes
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from jarvis.automation.agent import AutomationAgent
 from jarvis.automation.safety import EmergencyStopManager
-from jarvis.config import JARVIS_ROOT
+from jarvis.config import CACHE_DIR, JARVIS_ROOT
 from jarvis.conversation import JarvisConversation
+from jarvis.ui.auth import MobileAuthManager, get_local_network_ip
 from jarvis.ui.state import UIState, UIStateManager
 from jarvis.voice.audio_io import play_audio, record_until_silence
 from jarvis.voice.stt import JarvisSTT
@@ -31,6 +43,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 class ChatRequest(BaseModel):
     message: str
     speak: Optional[bool] = None
+
+
+class AuthVerifyRequest(BaseModel):
+    pin: str
 
 
 class VoiceListenRequest(BaseModel):
@@ -103,6 +119,156 @@ def create_ui_app(
             mime += "; charset=utf-8"
         return Response(content=target_file.read_bytes(), media_type=mime)
 
+    @app.get("/manifest.json", response_class=Response)
+    async def serve_manifest() -> Response:
+        manifest_file = STATIC_DIR / "manifest.json"
+        if not manifest_file.exists():
+            raise HTTPException(status_code=404, detail="manifest.json not found")
+        return Response(content=manifest_file.read_bytes(), media_type="application/manifest+json; charset=utf-8")
+
+    @app.get("/sw.js", response_class=Response)
+    async def serve_sw() -> Response:
+        sw_file = STATIC_DIR / "sw.js"
+        if not sw_file.exists():
+            raise HTTPException(status_code=404, detail="sw.js not found")
+        return Response(content=sw_file.read_bytes(), media_type="application/javascript; charset=utf-8")
+
+    # --- Mobile Pairing & Authentication Endpoints ---
+
+    @app.post("/api/auth/verify")
+    async def verify_pairing_pin(req: AuthVerifyRequest, request: Request) -> Dict[str, Any]:
+        """Verify the 6-digit PIN and issue a session token for mobile device access."""
+        auth_mgr = MobileAuthManager.get_instance()
+        client_ip = request.client.host if request.client else ""
+        token = auth_mgr.verify_pin(req.pin, client_ip=client_ip)
+        if token:
+            return {"status": "success", "token": token, "message": "Device successfully paired, Sir."}
+        return {"status": "error", "message": "Invalid pairing PIN. Access denied."}
+
+    @app.get("/api/auth/status")
+    async def get_auth_status(request: Request) -> Dict[str, Any]:
+        """Check if client is authenticated."""
+        auth_mgr = MobileAuthManager.get_instance()
+        is_auth = auth_mgr.is_request_authenticated(request)
+        client_ip = request.client.host if request.client else ""
+        return {"authenticated": is_auth, "client_ip": client_ip}
+
+    @app.get("/api/mobile/info")
+    async def get_mobile_info(request: Request) -> Dict[str, Any]:
+        """Provide local network connection info for mobile access."""
+        auth_mgr = MobileAuthManager.get_instance()
+        client_ip = request.client.host if request.client else ""
+        is_localhost = client_ip in ("127.0.0.1", "localhost", "::1", "testclient")
+        return {
+            "local_ip": get_local_network_ip(),
+            "pairing_pin": auth_mgr.pairing_pin if (is_localhost or auth_mgr.is_request_authenticated(request)) else None,
+            "paired_devices": len(auth_mgr.paired_device_ips),
+            "authenticated": auth_mgr.is_request_authenticated(request),
+        }
+
+    @app.get("/api/voice/audio/{filename}")
+    async def get_spoken_audio(filename: str) -> Response:
+        """Stream generated audio response to mobile client."""
+        clean_name = Path(filename).name
+        if not (clean_name.endswith(".mp3") or clean_name.endswith(".wav")):
+            raise HTTPException(status_code=400, detail="Invalid audio format")
+        target_file = CACHE_DIR / "temp" / clean_name
+        if not target_file.exists():
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        media_type = "audio/mpeg" if clean_name.endswith(".mp3") else "audio/wav"
+        return Response(content=target_file.read_bytes(), media_type=media_type)
+
+    @app.post("/api/voice/mobile-upload")
+    async def handle_mobile_voice_upload(
+        request: Request,
+        audio: UploadFile = File(...),
+        speak: Optional[bool] = Form(True),
+    ) -> Dict[str, Any]:
+        """Receive audio recorded from mobile phone microphone, process through Whisper and Ollama."""
+        auth_mgr = MobileAuthManager.get_instance()
+        if not auth_mgr.is_request_authenticated(request):
+            raise HTTPException(status_code=401, detail="Mobile Pairing Authentication Required")
+
+        state_mgr.set_state(UIState.PROCESSING, "Receiving audio stream from mobile device...")
+        await state_mgr.broadcast_state()
+
+        # Save incoming audio to D:\\JARVIS\\.cache\\temp
+        temp_dir = CACHE_DIR / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        filename_orig = audio.filename or "mobile_voice.wav"
+        ext = Path(filename_orig).suffix or ".wav"
+        save_path = temp_dir / f"mobile_upload_{int(time.time())}{ext}"
+
+        audio_bytes = await audio.read()
+        save_path.write_bytes(audio_bytes)
+
+        # Transcribe with Whisper
+        loop = asyncio.get_running_loop()
+        state_mgr.set_state(UIState.PROCESSING, "Transcribing mobile speech with Faster-Whisper...")
+        await state_mgr.broadcast_state()
+
+        try:
+            user_text, detected_lang, prob = await loop.run_in_executor(
+                None, voice_stt.transcribe, save_path
+            )
+        except Exception as e:
+            logger.error(f"Mobile voice transcription failed: {e}")
+            state_mgr.set_state(UIState.ERROR, f"Transcription error: {e}")
+            await state_mgr.broadcast_state()
+            return {"status": "error", "message": f"Transcription failed: {e}", "user_text": ""}
+
+        if not user_text.strip():
+            state_mgr.set_state(UIState.IDLE, "No clear speech detected from mobile.")
+            await state_mgr.broadcast_state()
+            return {
+                "status": "empty",
+                "user_text": "",
+                "reply": "I did not detect any speech from your device, Sir.",
+                "audio_url": None,
+            }
+
+        # Execute through AutomationAgent
+        state_mgr.set_state(UIState.THINKING, f"Mobile Command: '{user_text}'")
+        await state_mgr.broadcast_state()
+
+        try:
+            reply, actions = await loop.run_in_executor(
+                None, automation_agent.execute_user_command, user_text
+            )
+
+            # Synthesize reply for mobile playback
+            audio_url = None
+            if speak and reply:
+                state_mgr.set_state(UIState.SPEAKING, "Synthesizing spoken response for mobile...")
+                await state_mgr.broadcast_state()
+                audio_file = await loop.run_in_executor(
+                    None, voice_tts.synthesize, reply
+                )
+                audio_url = f"/api/voice/audio/{audio_file.name}"
+
+            state_mgr.set_state(UIState.IDLE, "Standing by, Sir.")
+            await state_mgr.broadcast_state()
+
+            return {
+                "status": "success",
+                "user_text": user_text,
+                "detected_lang": detected_lang,
+                "reply": reply,
+                "actions": actions,
+                "audio_url": audio_url,
+            }
+        except Exception as e:
+            logger.error(f"Mobile command execution error: {e}")
+            state_mgr.set_state(UIState.ERROR, f"Error: {e}")
+            await state_mgr.broadcast_state()
+            return {
+                "status": "error",
+                "user_text": user_text,
+                "reply": f"An error occurred, Sir: {e}",
+                "actions": [],
+                "audio_url": None,
+            }
+
     # --- REST Endpoints ---
 
     @app.get("/api/telemetry")
@@ -114,6 +280,8 @@ def create_ui_app(
             "telemetry": data,
             "ai_state": state_mgr.current_state,
             "state_message": state_mgr.state_message,
+            "ai_provider": getattr(automation_agent.conv.provider, "name", "ollama").upper(),
+            "ai_model": getattr(automation_agent.conv.provider, "model_name", "qwen2.5:1.5b"),
         }
 
     @app.get("/api/state")
@@ -153,8 +321,15 @@ def create_ui_app(
         }
 
     @app.post("/api/chat")
-    async def handle_chat(req: ChatRequest) -> Dict[str, Any]:
+    async def handle_chat(req: ChatRequest, request: Request) -> Dict[str, Any]:
         """Process a text command via Claude AI and Automation Agent."""
+        auth_mgr = MobileAuthManager.get_instance()
+        if not auth_mgr.is_request_authenticated(request):
+            raise HTTPException(
+                status_code=401,
+                detail="Mobile Pairing Authentication Required. Enter the 6-digit PIN shown on your Laptop HUD.",
+            )
+
         user_msg = req.message.strip()
         if not user_msg:
             return {"reply": "", "actions": [], "status": "empty"}
@@ -221,8 +396,15 @@ def create_ui_app(
             }
 
     @app.post("/api/voice/listen")
-    async def handle_voice_listen(req: VoiceListenRequest) -> Dict[str, Any]:
+    async def handle_voice_listen(req: VoiceListenRequest, request: Request) -> Dict[str, Any]:
         """Record audio from user's microphone, transcribe with Whisper, and execute."""
+        auth_mgr = MobileAuthManager.get_instance()
+        if not auth_mgr.is_request_authenticated(request):
+            raise HTTPException(
+                status_code=401,
+                detail="Mobile Pairing Authentication Required. Enter the 6-digit PIN shown on your Laptop HUD.",
+            )
+
         state_mgr.set_state(UIState.LISTENING, "Listening to microphone input (Speak now)...")
         await state_mgr.broadcast_state()
 

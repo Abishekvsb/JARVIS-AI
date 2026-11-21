@@ -158,57 +158,105 @@ class AutomationAgent:
             reply = self.conv.ask(prompt_clean)
             return str(reply), []
 
-        # 2. Try Claude AI Tool Calling first
+        # 2. Try Provider Tool Calling (Local Ollama or Anthropic)
         try:
             self.conv.history.append(ChatTurn(role="user", content=prompt_clean))
-            raw_messages = self.conv._build_anthropic_messages()
 
-            response = self.conv.client.messages.create(
-                model=self.conv.model,
-                max_tokens=2048,
-                system=self.system_prompt,
-                messages=raw_messages,
-                tools=AUTOMATION_TOOLS,
-            )
+            # If provider has native ask_tool_calling
+            if hasattr(self.conv, "provider") and hasattr(self.conv.provider, "ask_tool_calling"):
+                recent_history = [
+                    {"role": t.role, "content": t.content}
+                    for t in self.conv.history[-self.conv.max_history_turns : -1]
+                ]
+                reply_text, tool_calls = self.conv.provider.ask_tool_calling(
+                    user_message=prompt_clean,
+                    tools=AUTOMATION_TOOLS,
+                    system_prompt=self.system_prompt,
+                    history=recent_history,
+                    max_tokens=2048,
+                )
 
-            if response.stop_reason == "tool_use":
-                assistant_blocks = response.content
-                tool_results_blocks = []
-
-                for block in assistant_blocks:
-                    if block.type == "tool_use":
-                        t_id = block.id
-                        t_name = block.name
-                        t_input = block.input
-
+                if tool_calls:
+                    for tc in tool_calls:
+                        t_name = tc.get("name", "")
+                        t_input = tc.get("input", {})
                         tool_res = execute_tool(t_name, t_input)
                         executed_actions.append({"tool": t_name, "input": t_input, "result": tool_res})
 
-                        tool_results_blocks.append({
-                            "type": "tool_result",
-                            "tool_use_id": t_id,
-                            "content": json.dumps(tool_res, ensure_ascii=False),
-                        })
+                    if not reply_text:
+                        action_summaries = [f"{a['tool']}: {a['result'].get('message', 'Completed')}" for a in executed_actions]
+                        reply_text = "Executed the requested actions, Sir:\n" + "\n".join(action_summaries)
 
-                raw_messages.append({"role": "assistant", "content": assistant_blocks})
-                raw_messages.append({"role": "user", "content": tool_results_blocks})
+                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
+                    return reply_text, executed_actions
 
-                followup = self.conv.client.messages.create(
+                else:
+                    # Hybrid check: If AI answered conversationally without dispatching tools,
+                    # check if the user gave an explicit allowlisted command (e.g. Tanglish/Tamil commands)
+                    fallback = _rule_based_fallback_intent(prompt_clean)
+                    if fallback is not None:
+                        tool_name, tool_input, fallback_reply = fallback
+                        if tool_name not in ("reset", "identity", "greeting"):
+                            res = execute_tool(tool_name, tool_input)
+                            executed_actions.append({"tool": tool_name, "input": tool_input, "result": res})
+                            if not res.get("success", False):
+                                fallback_reply = f"Attempted {tool_name}, but: {res.get('message', 'Failed')}."
+                            self.conv.history.append(ChatTurn(role="assistant", content=fallback_reply))
+                            return fallback_reply, executed_actions
+
+                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
+                    return reply_text, []
+
+            # Legacy fallback if client is mock with messages.create
+            elif hasattr(self.conv, "client") and self.conv.client and hasattr(self.conv.client, "messages"):
+                raw_messages = self.conv._build_anthropic_messages()
+                response = self.conv.client.messages.create(
                     model=self.conv.model,
-                    max_tokens=1024,
+                    max_tokens=2048,
                     system=self.system_prompt,
                     messages=raw_messages,
                     tools=AUTOMATION_TOOLS,
                 )
 
-                reply_text = "".join(b.text for b in followup.content if b.type == "text")
-                self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                return reply_text, executed_actions
+                if response.stop_reason == "tool_use":
+                    assistant_blocks = response.content
+                    tool_results_blocks = []
 
+                    for block in assistant_blocks:
+                        if block.type == "tool_use":
+                            t_id = block.id
+                            t_name = block.name
+                            t_input = block.input
+
+                            tool_res = execute_tool(t_name, t_input)
+                            executed_actions.append({"tool": t_name, "input": t_input, "result": tool_res})
+
+                            tool_results_blocks.append({
+                                "type": "tool_result",
+                                "tool_use_id": t_id,
+                                "content": json.dumps(tool_res, ensure_ascii=False),
+                            })
+
+                    raw_messages.append({"role": "assistant", "content": assistant_blocks})
+                    raw_messages.append({"role": "user", "content": tool_results_blocks})
+
+                    followup = self.conv.client.messages.create(
+                        model=self.conv.model,
+                        max_tokens=1024,
+                        system=self.system_prompt,
+                        messages=raw_messages,
+                        tools=AUTOMATION_TOOLS,
+                    )
+
+                    reply_text = "".join(b.text for b in followup.content if b.type == "text")
+                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
+                    return reply_text, executed_actions
+                else:
+                    reply_text = "".join(b.text for b in response.content if b.type == "text")
+                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
+                    return reply_text, []
             else:
-                reply_text = "".join(b.text for b in response.content if b.type == "text")
-                self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                return reply_text, []
+                raise RuntimeError("No active AI provider configured.")
 
         except Exception as e:
             # Pop user message if call failed
