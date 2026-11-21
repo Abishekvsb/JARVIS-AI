@@ -14,14 +14,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import anthropic
 
+from unittest.mock import Mock, MagicMock
+
 from jarvis.automation.executor import execute_tool
 from jarvis.automation.safety import EmergencyStopManager
 from jarvis.automation.tools_schema import AUTOMATION_TOOLS
 from jarvis.config import JarvisConfig, get_config
 from jarvis.conversation import ChatTurn, JarvisConversation
+from jarvis.conversation_brain import ConversationBrain
+from jarvis.mobile.notification_hub import NotificationHub
 from jarvis.system_prompt import get_system_prompt
-
-from unittest.mock import Mock, MagicMock
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +180,33 @@ class AutomationAgent:
             reply = self.conv.ask(prompt_clean)
             return str(reply), []
 
-        # 2. Try Provider Tool Calling (Local Ollama or Anthropic)
+        # 2. Dialogue State Tracking & Conversational Brain Check
+        brain = ConversationBrain.get_instance()
+        notif_hub = NotificationHub.get_instance()
+        recent_notifs = notif_hub.get_notifications(limit=10)
+        direct_answer, pending_action = brain.handle_dialogue_turn(prompt_clean, notification_feed=recent_notifs)
+
+        if pending_action:
+            tool_name = pending_action.get("tool")
+            tool_input = pending_action.get("input", {})
+            res = execute_tool(tool_name, tool_input)
+            executed_actions.append({"tool": tool_name, "input": tool_input, "result": res})
+            if tool_name == "send_whatsapp_message":
+                rep = f"Message sent to {tool_input.get('recipient')} successfully, Sir."
+            else:
+                rep = f"Action {tool_name} executed successfully, Sir."
+            rep = brain.filter_response(rep)
+            self.conv.history.append(ChatTurn(role="user", content=prompt_clean))
+            self.conv.history.append(ChatTurn(role="assistant", content=rep))
+            return rep, executed_actions
+
+        if direct_answer:
+            filtered = brain.filter_response(direct_answer)
+            self.conv.history.append(ChatTurn(role="user", content=prompt_clean))
+            self.conv.history.append(ChatTurn(role="assistant", content=filtered))
+            return filtered, []
+
+        # 3. Try Provider Tool Calling (Local Ollama or Anthropic)
         try:
             self.conv.history.append(ChatTurn(role="user", content=prompt_clean))
 
@@ -207,8 +235,9 @@ class AutomationAgent:
                         action_summaries = [f"{a['tool']}: {a['result'].get('message', 'Completed')}" for a in executed_actions]
                         reply_text = "Executed the requested actions, Sir:\n" + "\n".join(action_summaries)
 
-                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                    return reply_text, executed_actions
+                    filtered_reply = brain.filter_response(reply_text)
+                    self.conv.history.append(ChatTurn(role="assistant", content=filtered_reply))
+                    return filtered_reply, executed_actions
 
                 else:
                     # Hybrid check: If AI answered conversationally without dispatching tools,
@@ -221,11 +250,13 @@ class AutomationAgent:
                             executed_actions.append({"tool": tool_name, "input": tool_input, "result": res})
                             if not res.get("success", False):
                                 fallback_reply = f"Attempted {tool_name}, but: {res.get('message', 'Failed')}."
-                            self.conv.history.append(ChatTurn(role="assistant", content=fallback_reply))
-                            return fallback_reply, executed_actions
+                            filtered_fb = brain.filter_response(fallback_reply)
+                            self.conv.history.append(ChatTurn(role="assistant", content=filtered_fb))
+                            return filtered_fb, executed_actions
 
-                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                    return reply_text, []
+                    filtered_reply = brain.filter_response(reply_text)
+                    self.conv.history.append(ChatTurn(role="assistant", content=filtered_reply))
+                    return filtered_reply, []
 
             # Legacy fallback if client is mock with messages.create
             elif hasattr(self.conv, "client") and self.conv.client and hasattr(self.conv.client, "messages"):
@@ -269,12 +300,14 @@ class AutomationAgent:
                     )
 
                     reply_text = "".join(b.text for b in followup.content if b.type == "text")
-                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                    return reply_text, executed_actions
+                    filtered_reply = brain.filter_response(reply_text)
+                    self.conv.history.append(ChatTurn(role="assistant", content=filtered_reply))
+                    return filtered_reply, executed_actions
                 else:
                     reply_text = "".join(b.text for b in response.content if b.type == "text")
-                    self.conv.history.append(ChatTurn(role="assistant", content=reply_text))
-                    return reply_text, []
+                    filtered_reply = brain.filter_response(reply_text)
+                    self.conv.history.append(ChatTurn(role="assistant", content=filtered_reply))
+                    return filtered_reply, []
             else:
                 raise RuntimeError("No active AI provider configured.")
 
@@ -293,10 +326,11 @@ class AutomationAgent:
                     if not res.get("success", False):
                         fallback_reply = f"Attempted {tool_name}, but: {res.get('message', 'Failed')}."
 
+                filtered_fb = brain.filter_response(fallback_reply)
                 # Append to history so conversation continuity is preserved
                 self.conv.history.append(ChatTurn(role="user", content=prompt_clean))
-                self.conv.history.append(ChatTurn(role="assistant", content=fallback_reply))
-                return fallback_reply, executed_actions
+                self.conv.history.append(ChatTurn(role="assistant", content=filtered_fb))
+                return filtered_fb, executed_actions
 
             # If not a recognized local intent, propagate the error (e.g. credit balance or connection)
             raise e

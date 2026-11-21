@@ -209,6 +209,15 @@
       if (data.action_history && data.action_history.length > 0) {
         renderActionHistory(data.action_history);
       }
+      if (data.notifications) {
+        renderNotificationFeed(data.notifications);
+      }
+      if (data.unread_count !== undefined) {
+        updateNotifBadge(data.unread_count);
+      }
+      if (data.auto_reply) {
+        applyAutoReplySettingsUI(data.auto_reply);
+      }
     } else if (data.type === 'state_change') {
       setAiState(data.state, data.message);
       if (data.active_action) {
@@ -224,6 +233,14 @@
       }
     } else if (data.type === 'voice_toggle') {
       if (chkVoiceOutput) chkVoiceOutput.checked = data.enabled;
+    } else if (data.type === 'notification_received') {
+      appendNotificationCard(data.notification, true);
+      updateNotifBadge(data.unread_count);
+    } else if (data.type === 'notifications_cleared') {
+      clearNotificationFeedUI();
+      updateNotifBadge(0);
+    } else if (data.type === 'settings_updated') {
+      applyAutoReplySettingsUI(data.auto_reply);
     }
   }
 
@@ -695,6 +712,197 @@
           type: 'toggle_voice_output',
           enabled: chkVoiceOutput.checked,
         }));
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // PHASE 9/10: TAB SWITCHING, LIVE NOTIFICATIONS & SETTINGS MODAL
+  // -------------------------------------------------------------------------
+  const tabBtns = document.querySelectorAll('.hud-tab-btn');
+  const tabPanes = {
+    'chat-pane': document.getElementById('chat-pane'),
+    'notifs-pane': document.getElementById('notifs-pane'),
+    'activity-pane': document.getElementById('activity-pane'),
+  };
+
+  function switchTab(targetPaneId) {
+    tabBtns.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.target === targetPaneId);
+    });
+    Object.keys(tabPanes).forEach((id) => {
+      if (tabPanes[id]) {
+        tabPanes[id].style.display = id === targetPaneId ? 'flex' : 'none';
+      }
+    });
+  }
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.target));
+  });
+
+  const notifPill = document.getElementById('notif-pill');
+  if (notifPill) {
+    notifPill.addEventListener('click', () => switchTab('notifs-pane'));
+  }
+
+  // Live Notifications Feed Handlers
+  const notificationFeed = document.getElementById('notification-feed');
+  const notifPlaceholder = document.getElementById('notif-placeholder');
+  const quickNotifCount = document.getElementById('quick-notif-count');
+  const tabNotifBadge = document.getElementById('tab-notif-badge');
+  const btnClearNotifs = document.getElementById('btn-clear-notifs');
+
+  function updateNotifBadge(count) {
+    const val = count || 0;
+    if (quickNotifCount) quickNotifCount.textContent = val;
+    if (tabNotifBadge) tabNotifBadge.textContent = val;
+  }
+
+  function appendNotificationCard(n, prepend = true) {
+    if (!notificationFeed) return;
+    if (notifPlaceholder) notifPlaceholder.style.display = 'none';
+
+    const card = document.createElement('div');
+    const priorityClass = `priority-${(n.priority || 'medium').toLowerCase()}`;
+    card.className = `notif-card ${priorityClass}`;
+
+    const dateStr = n.timestamp ? new Date(n.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const autoRepliedHtml = n.auto_replied ? `
+      <div class="notif-reply-preview">
+        <span>⚡ AUTO-REPLIED:</span> "${escapeHtml(n.auto_reply_text || '')}"
+      </div>
+    ` : '';
+
+    card.innerHTML = `
+      <div class="notif-card-header">
+        <div class="notif-sender-wrap">
+          <span class="notif-app-tag">${escapeHtml(n.app || 'APP')}</span>
+          <span class="notif-sender">${escapeHtml(n.sender || 'Unknown')}</span>
+        </div>
+        <span class="notif-time">${dateStr}</span>
+      </div>
+      <div class="notif-content">${escapeHtml(n.content || '')}</div>
+      ${autoRepliedHtml}
+    `;
+
+    if (prepend && notificationFeed.firstChild) {
+      notificationFeed.insertBefore(card, notificationFeed.firstChild);
+    } else {
+      notificationFeed.appendChild(card);
+    }
+  }
+
+  function renderNotificationFeed(items) {
+    if (!notificationFeed) return;
+    notificationFeed.innerHTML = '';
+    if (!items || items.length === 0) {
+      if (notifPlaceholder) {
+        notificationFeed.appendChild(notifPlaceholder);
+        notifPlaceholder.style.display = 'block';
+      }
+      return;
+    }
+    items.forEach((item) => appendNotificationCard(item, false));
+  }
+
+  function clearNotificationFeedUI() {
+    if (notificationFeed) {
+      notificationFeed.innerHTML = '';
+      if (notifPlaceholder) {
+        notificationFeed.appendChild(notifPlaceholder);
+        notifPlaceholder.style.display = 'block';
+      }
+    }
+  }
+
+  if (btnClearNotifs) {
+    btnClearNotifs.addEventListener('click', async () => {
+      clearNotificationFeedUI();
+      updateNotifBadge(0);
+      try {
+        await authFetch('/api/notifications/clear', { method: 'POST' });
+      } catch (e) {
+        console.warn('Clear notifications failed:', e);
+      }
+    });
+  }
+
+  // Settings Modal Handlers
+  const modalSettings = document.getElementById('modal-settings');
+  const btnSettings = document.getElementById('btn-settings');
+  const btnCloseSettings = document.getElementById('btn-close-settings');
+  const btnSaveSettings = document.getElementById('btn-save-settings');
+
+  const settingAutoReplyMaster = document.getElementById('setting-auto-reply-master');
+  const settingGreetingAutoReply = document.getElementById('setting-greeting-auto-reply');
+  const settingMobileStream = document.getElementById('setting-mobile-stream');
+  const chkAppWhatsapp = document.getElementById('chk-app-whatsapp');
+  const chkAppTelegram = document.getElementById('chk-app-telegram');
+  const chkAppSms = document.getElementById('chk-app-sms');
+  const chkAppInstagram = document.getElementById('chk-app-instagram');
+
+  function applyAutoReplySettingsUI(settings) {
+    if (!settings) return;
+    if (settingAutoReplyMaster) settingAutoReplyMaster.checked = !!settings.enabled;
+    if (settingGreetingAutoReply) settingGreetingAutoReply.checked = !!settings.greeting_auto_reply_enabled;
+    if (settings.allowed_apps) {
+      const apps = Array.isArray(settings.allowed_apps) ? settings.allowed_apps.map(a => a.toLowerCase()) : [];
+      if (chkAppWhatsapp) chkAppWhatsapp.checked = apps.some(a => a.includes('whatsapp'));
+      if (chkAppTelegram) chkAppTelegram.checked = apps.some(a => a.includes('telegram'));
+      if (chkAppSms) chkAppSms.checked = apps.some(a => a.includes('sms'));
+      if (chkAppInstagram) chkAppInstagram.checked = apps.some(a => a.includes('instagram'));
+    }
+  }
+
+  if (btnSettings && modalSettings) {
+    btnSettings.addEventListener('click', async () => {
+      try {
+        const res = await authFetch('/api/settings/auto-reply');
+        const data = await res.json();
+        applyAutoReplySettingsUI(data);
+      } catch (e) {
+        console.warn('Fetch settings error:', e);
+      }
+      modalSettings.style.display = 'flex';
+    });
+  }
+
+  if (btnCloseSettings && modalSettings) {
+    btnCloseSettings.addEventListener('click', () => {
+      modalSettings.style.display = 'none';
+    });
+  }
+
+  if (btnSaveSettings && modalSettings) {
+    btnSaveSettings.addEventListener('click', async () => {
+      const allowed = [];
+      if (chkAppWhatsapp && chkAppWhatsapp.checked) allowed.push('WhatsApp');
+      if (chkAppTelegram && chkAppTelegram.checked) allowed.push('Telegram');
+      if (chkAppSms && chkAppSms.checked) allowed.push('SMS');
+      if (chkAppInstagram && chkAppInstagram.checked) allowed.push('Instagram');
+
+      const payload = {
+        enabled: settingAutoReplyMaster ? settingAutoReplyMaster.checked : false,
+        greeting_auto_reply_enabled: settingGreetingAutoReply ? settingGreetingAutoReply.checked : false,
+        allowed_apps: allowed,
+      };
+
+      try {
+        btnSaveSettings.textContent = 'SAVING...';
+        await authFetch('/api/settings/auto-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        btnSaveSettings.textContent = 'SAVED!';
+        setTimeout(() => {
+          btnSaveSettings.textContent = 'SAVE CONFIGURATION';
+          modalSettings.style.display = 'none';
+        }, 600);
+      } catch (e) {
+        btnSaveSettings.textContent = 'ERROR';
+        setTimeout(() => { btnSaveSettings.textContent = 'SAVE CONFIGURATION'; }, 1500);
       }
     });
   }

@@ -29,6 +29,8 @@ from jarvis.automation.agent import AutomationAgent
 from jarvis.automation.safety import EmergencyStopManager
 from jarvis.config import CACHE_DIR, JARVIS_ROOT
 from jarvis.conversation import JarvisConversation
+from jarvis.mobile.auto_reply import AutoReplyEngine
+from jarvis.mobile.notification_hub import NotificationHub
 from jarvis.ui.auth import MobileAuthManager, get_local_network_ip
 from jarvis.ui.state import UIState, UIStateManager
 from jarvis.voice.audio_io import play_audio, record_until_silence
@@ -52,6 +54,21 @@ class AuthVerifyRequest(BaseModel):
 class VoiceListenRequest(BaseModel):
     max_seconds: float = 12.0
     speak: Optional[bool] = None
+
+
+class IngestNotificationRequest(BaseModel):
+    app: str
+    sender: str
+    content: str
+    timestamp: Optional[float] = None
+
+
+class AutoReplySettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    greeting_auto_reply_enabled: Optional[bool] = None
+    allowed_apps: Optional[list[str]] = None
+    allowed_contacts: Optional[list[str]] = None
+    cooldown_seconds: Optional[int] = None
 
 
 def create_ui_app(
@@ -496,6 +513,103 @@ def create_ui_app(
                 "actions": [],
             }
 
+    # --- Mobile Notification & Auto-Reply Endpoints ---
+
+    @app.post("/api/notifications/ingest")
+    async def ingest_notification(req: IngestNotificationRequest, request: Request) -> Dict[str, Any]:
+        """Ingest incoming notification from mobile phone (WhatsApp, Telegram, SMS, etc.)."""
+        auth_mgr = MobileAuthManager.get_instance()
+        if not auth_mgr.is_request_authenticated(request):
+            raise HTTPException(status_code=401, detail="Authentication required to ingest notifications.")
+
+        notif_hub = NotificationHub.get_instance()
+        accepted, notif, msg = notif_hub.ingest_notification(
+            app=req.app,
+            sender=req.sender,
+            content=req.content,
+            timestamp=req.timestamp,
+        )
+
+        if accepted and notif:
+            # Broadcast to HUD via WebSocket
+            await state_mgr.broadcast({
+                "type": "notification_received",
+                "notification": notif.to_dict(),
+                "unread_count": notif_hub.get_unread_count(),
+            })
+            return {
+                "status": "success",
+                "message": msg,
+                "notification": notif.to_dict(),
+                "unread_count": notif_hub.get_unread_count(),
+            }
+        return {"status": "dropped", "message": msg, "unread_count": notif_hub.get_unread_count()}
+
+    @app.get("/api/notifications")
+    async def get_notifications(unread_only: bool = False, limit: int = 50) -> Dict[str, Any]:
+        """Retrieve active notifications and unread count."""
+        hub = NotificationHub.get_instance()
+        return {
+            "status": "success",
+            "notifications": hub.get_notifications(unread_only=unread_only, limit=limit),
+            "unread_count": hub.get_unread_count(),
+        }
+
+    @app.post("/api/notifications/clear")
+    async def clear_notifications() -> Dict[str, Any]:
+        """Mark all notifications as read or clear feed."""
+        hub = NotificationHub.get_instance()
+        hub.clear()
+        await state_mgr.broadcast({
+            "type": "notifications_cleared",
+            "unread_count": 0,
+        })
+        return {"status": "success", "message": "All notifications cleared."}
+
+    @app.get("/api/settings/auto-reply")
+    async def get_auto_reply_settings() -> Dict[str, Any]:
+        """Get current auto-reply settings."""
+        engine = AutoReplyEngine.get_instance()
+        return {
+            "status": "success",
+            "enabled": engine.config.enabled,
+            "greeting_auto_reply_enabled": engine.config.greeting_auto_reply_enabled,
+            "allowed_apps": list(engine.config.allowed_apps),
+            "allowed_contacts": engine.config.allowed_contacts,
+            "cooldown_seconds": engine.config.cooldown_seconds,
+        }
+
+    @app.post("/api/settings/auto-reply")
+    async def update_auto_reply_settings(req: AutoReplySettingsRequest, request: Request) -> Dict[str, Any]:
+        """Update auto-reply settings."""
+        auth_mgr = MobileAuthManager.get_instance()
+        if not auth_mgr.is_request_authenticated(request):
+            raise HTTPException(status_code=401, detail="Authentication required.")
+
+        engine = AutoReplyEngine.get_instance()
+        updates = {}
+        if req.enabled is not None:
+            updates["enabled"] = req.enabled
+        if req.greeting_auto_reply_enabled is not None:
+            updates["greeting_auto_reply_enabled"] = req.greeting_auto_reply_enabled
+        if req.allowed_apps is not None:
+            updates["allowed_apps"] = set(req.allowed_apps)
+        if req.allowed_contacts is not None:
+            updates["allowed_contacts"] = req.allowed_contacts
+        if req.cooldown_seconds is not None:
+            updates["cooldown_seconds"] = req.cooldown_seconds
+
+        engine.update_config(**updates)
+        await state_mgr.broadcast({
+            "type": "settings_updated",
+            "auto_reply": {
+                "enabled": engine.config.enabled,
+                "greeting_auto_reply_enabled": engine.config.greeting_auto_reply_enabled,
+                "allowed_apps": list(engine.config.allowed_apps),
+            },
+        })
+        return {"status": "success", "message": "Auto-reply configuration updated successfully."}
+
     # --- WebSocket Channel ---
 
     @app.websocket("/ws")
@@ -503,6 +617,8 @@ def create_ui_app(
         await ws.accept()
         await state_mgr.register_ws(ws)
         try:
+            notif_hub = NotificationHub.get_instance()
+            auto_reply_eng = AutoReplyEngine.get_instance()
             # Send initial state snapshot
             await ws.send_json({
                 "type": "init",
@@ -513,6 +629,13 @@ def create_ui_app(
                 "telemetry": state_mgr.update_telemetry(),
                 "voice_output_enabled": state_mgr.voice_output_enabled,
                 "emergency_stop": EmergencyStopManager.get_instance().is_stopped(),
+                "notifications": notif_hub.get_notifications(limit=15),
+                "unread_count": notif_hub.get_unread_count(),
+                "auto_reply": {
+                    "enabled": auto_reply_eng.config.enabled,
+                    "greeting_auto_reply_enabled": auto_reply_eng.config.greeting_auto_reply_enabled,
+                    "allowed_apps": list(auto_reply_eng.config.allowed_apps),
+                },
             })
 
             while True:

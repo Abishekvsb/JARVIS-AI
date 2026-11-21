@@ -51,10 +51,18 @@
           <span class="pill-label">📱 MOBILE</span>
           <span class="pill-val glow-cyan" id="quick-mobile">WI-FI LINK</span>
         </div>
+        <div class="telemetry-pill notif-pill" id="notif-pill" title="Click to view notification stream">
+          <span class="pill-label">🔔 NOTIFS</span>
+          <span class="pill-val glow-cyan" id="quick-notif-count">0</span>
+        </div>
       </div>
 
       <!-- Emergency Stop & Controls -->
       <div class="header-actions">
+        <button id="btn-settings" class="btn-settings glow-cyan" title="Configure AI Auto-Reply & Monitoring">
+          <span class="settings-icon">⚙</span>
+          <span>SETTINGS</span>
+        </button>
         <button id="btn-emergency-stop" class="btn-emergency glow-red" title="Immediate Kill-Switch: Halts all ongoing automation">
           <span class="emergency-icon">⚠</span>
           <span class="emergency-text">EMERGENCY STOP</span>
@@ -256,64 +264,93 @@
         </div>
       </section>
 
-      <!-- RIGHT COLUMN: NEURAL CHAT & AUTOMATION ACTIVITY -->
+      <!-- RIGHT COLUMN: NEURAL CHAT, NOTIFICATIONS & AUTOMATION ACTIVITY -->
       <aside class="hud-panel panel-right">
-        <!-- Top Half: Neural Chat Stream -->
-        <div class="chat-section">
-          <div class="panel-header">
-            <span class="panel-bracket">[</span>
-            <h2>NEURAL INTERFACE CHAT</h2>
-            <span class="panel-bracket">]</span>
-          </div>
-
-          <div class="chat-messages" id="chat-messages">
-            <!-- Initial Greeting Bubble -->
-            <div class="chat-bubble bubble-jarvis">
-              <div class="bubble-header">
-                <span class="bubble-author glow-cyan">J.A.R.V.I.S.</span>
-                <span class="bubble-time" id="welcome-time">11:00</span>
-              </div>
-              <div class="bubble-content">
-                Good day, Sir. All desktop automation and voice systems are online. How may I be of assistance today?
-              </div>
-            </div>
-          </div>
-
-          <!-- Chat Input Row -->
-          <form id="chat-form" class="chat-input-bar">
-            <input
-              type="text"
-              id="chat-input"
-              class="hud-input"
-              placeholder="Type in English, Tanglish, or தமிழ்..."
-              autocomplete="off"
-            />
-            <button type="submit" id="btn-send-chat" class="btn-send glow-cyan" title="Send message (Enter)">
-              <span>SEND</span>
-              <span class="send-arrow">▶</span>
-            </button>
-          </form>
+        <!-- Segmented Tab Navigation -->
+        <div class="hud-tab-bar">
+          <button class="hud-tab-btn active" id="tab-btn-chat" data-target="chat-pane">NEURAL CHAT</button>
+          <button class="hud-tab-btn" id="tab-btn-notifs" data-target="notifs-pane">
+            NOTIFICATIONS <span class="tab-badge" id="tab-notif-badge">0</span>
+          </button>
+          <button class="hud-tab-btn" id="tab-btn-activity" data-target="activity-pane">ACTIVITY AUDIT</button>
         </div>
 
-        <!-- Bottom Half: Automation Activity & Audit Feed -->
-        <div class="automation-section">
+        <!-- Tab 1: Neural Chat Stream -->
+        <div class="hud-tab-content active-pane" id="chat-pane">
+          <div class="chat-section">
+            <div class="panel-header">
+              <span class="panel-bracket">[</span>
+              <h2>NEURAL INTERFACE CHAT</h2>
+              <span class="panel-bracket">]</span>
+            </div>
+
+            <div class="chat-messages" id="chat-messages">
+              <!-- Initial Greeting Bubble -->
+              <div class="chat-bubble bubble-jarvis">
+                <div class="bubble-header">
+                  <span class="bubble-author glow-cyan">J.A.R.V.I.S.</span>
+                  <span class="bubble-time" id="welcome-time">11:00</span>
+                </div>
+                <div class="bubble-content">
+                  Good day, Sir. All desktop automation and voice systems are online. How may I be of assistance today?
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat Input Row -->
+            <form id="chat-form" class="chat-input-bar">
+              <input
+                type="text"
+                id="chat-input"
+                class="hud-input"
+                placeholder="Type in English, Tanglish, or தமிழ்..."
+                autocomplete="off"
+              />
+              <button type="submit" id="btn-send-chat" class="btn-send glow-cyan" title="Send message (Enter)">
+                <span>SEND</span>
+                <span class="send-arrow">▶</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Tab 2: Live Mobile Notification Stream -->
+        <div class="hud-tab-content" id="notifs-pane" style="display: none;">
           <div class="panel-header">
             <span class="panel-bracket">[</span>
-            <h2>AUTOMATION ACTIVITY FEED</h2>
+            <h2>LIVE MOBILE NOTIFICATION STREAM</h2>
             <span class="panel-bracket">]</span>
-            <button id="btn-clear-activity" class="btn-clear-log" title="Clear visual activity feed">CLR</button>
+            <button id="btn-clear-notifs" class="btn-clear-log" title="Clear visual notification stream">CLR</button>
           </div>
 
-          <!-- Active Action Highlight -->
-          <div class="active-action-banner" id="active-action-banner" style="display: none;">
-            <div class="active-badge glow-gold">ACTIVE TASK</div>
-            <div class="active-desc" id="active-action-text">No active automation task.</div>
+          <div class="notification-feed" id="notification-feed">
+            <div class="notif-placeholder" id="notif-placeholder">
+              No mobile notifications. Connected Android devices (WhatsApp, Telegram, SMS) stream alerts here in real-time.
+            </div>
           </div>
+        </div>
 
-          <!-- Real-Time Activity Log Cards -->
-          <div class="activity-feed" id="activity-feed">
-            <div class="activity-placeholder" id="activity-placeholder">
-              Ready for Windows automation commands (e.g. screenshot, notepad dictation, web search, volume).
+        <!-- Tab 3: Automation Activity & Audit Feed -->
+        <div class="hud-tab-content" id="activity-pane" style="display: none;">
+          <div class="automation-section">
+            <div class="panel-header">
+              <span class="panel-bracket">[</span>
+              <h2>AUTOMATION ACTIVITY FEED</h2>
+              <span class="panel-bracket">]</span>
+              <button id="btn-clear-activity" class="btn-clear-log" title="Clear visual activity feed">CLR</button>
+            </div>
+
+            <!-- Active Action Highlight -->
+            <div class="active-action-banner" id="active-action-banner" style="display: none;">
+              <div class="active-badge glow-gold">ACTIVE TASK</div>
+              <div class="active-desc" id="active-action-text">No active automation task.</div>
+            </div>
+
+            <!-- Real-Time Activity Log Cards -->
+            <div class="activity-feed" id="activity-feed">
+              <div class="activity-placeholder" id="activity-placeholder">
+                Ready for Windows automation commands (e.g. screenshot, notepad dictation, web search, volume).
+              </div>
             </div>
           </div>
         </div>
@@ -368,6 +405,78 @@
       <div class="confirm-actions">
         <button id="btn-deny-action" class="btn-deny">DENY</button>
         <button id="btn-allow-action" class="btn-allow glow-gold">ALLOW ONCE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JARVIS AI & AUTO-REPLY SETTINGS MODAL -->
+  <div class="modal-overlay" id="modal-settings" style="display: none;">
+    <div class="modal-card glow-cyan-box settings-modal-card">
+      <div class="modal-header">
+        <span class="modal-icon">⚙</span>
+        <h3>INTELLIGENCE & AUTO-REPLY SETTINGS</h3>
+        <button id="btn-close-settings" class="modal-close-btn">&times;</button>
+      </div>
+      <p class="modal-subtitle">STARK PROTOCOL // AUTONOMOUS MONITORING CONTROLS</p>
+
+      <div class="settings-body">
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">Auto-Reply Engine</span>
+            <span class="setting-desc">Master switch for autonomous message replies (OFF by default)</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-auto-reply-master">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">Greeting Auto-Reply</span>
+            <span class="setting-desc">Auto-respond to simple greetings ("Hi", "Good morning") without confirmation</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-greeting-auto-reply">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">Mobile Monitoring Stream</span>
+            <span class="setting-desc">Ingest live notifications from connected Android device</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="setting-mobile-stream" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item app-filters-item">
+          <div class="setting-info">
+            <span class="setting-title">Allowed Applications</span>
+            <span class="setting-desc">Only permitted messaging apps will be monitored / auto-replied</span>
+          </div>
+          <div class="app-checkbox-group">
+            <label class="chk-label"><input type="checkbox" id="chk-app-whatsapp" checked> WhatsApp</label>
+            <label class="chk-label"><input type="checkbox" id="chk-app-telegram" checked> Telegram</label>
+            <label class="chk-label"><input type="checkbox" id="chk-app-sms" checked> SMS</label>
+            <label class="chk-label"><input type="checkbox" id="chk-app-instagram"> Instagram</label>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <span class="setting-title">Anti-Spam Cooldown</span>
+            <span class="setting-desc">Cooldown period per sender to prevent spam loops</span>
+          </div>
+          <span class="cooldown-badge glow-cyan">300s (5 min)</span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-save-settings" class="btn-primary glow-cyan">SAVE CONFIGURATION</button>
       </div>
     </div>
   </div>

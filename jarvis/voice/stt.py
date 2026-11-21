@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -23,11 +24,28 @@ HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 DEFAULT_INITIAL_PROMPT = (
-    "JARVIS personal AI assistant. English, Tamil, and Tanglish conversations. "
-    "Commands: WhatsApp, open WhatsApp, send WhatsApp message, message anupu, "
-    "screenshot eduthu, volume increase pannu, open notepad, Chrome, YouTube, "
-    "Vanakkam Sir, epdi irukkinga, innaiku enna plan, enakku enna work irukku."
+    "JARVIS personal AI assistant. English, Tamil, and Tanglish mixed conversations. "
+    "WhatsApp la yaar message pannirukanga? Arun enna message anupirukan? "
+    "Avanukku good morning sollu. Good morning message send pannava? Yes, send. "
+    "WhatsApp open pannu, check notifications, message anupu, volume increase pannu, "
+    "open notepad, take screenshot, search YouTube, Vanakkam Sir, epdi irukkinga."
 )
+
+
+def normalize_code_switching_phonetics(text: str) -> str:
+    """Normalize common acoustic distortions in code-switching Tanglish/Tamil/English."""
+    t = text
+    # WhatsApp distortions
+    t = re.sub(r"\b(?:what['\s]?s?\s*app|watsapp|watsup|வாட்ஸ்அப்|water sap|what sap|whatsup)\b", "WhatsApp", t, flags=re.IGNORECASE)
+    # Pronouns
+    t = re.sub(r"\b(?:avanukku|avanuku|avanuk)\b", "avanukku", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:avalukku|avaluku)\b", "avalukku", t, flags=re.IGNORECASE)
+    # Action verbs
+    t = re.sub(r"\b(?:anuppu|anupu|anupunga)\b", "anupu", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:pannu|panu|panunga)\b", "pannu", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:sollu|solu|solunga)\b", "sollu", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(?:thira|thura|open pannu)\b", "open pannu", t, flags=re.IGNORECASE)
+    return t
 
 
 class JarvisSTT:
@@ -94,8 +112,9 @@ class JarvisSTT:
 
             texts = [segment.text.strip() for segment in segments]
             full_text = " ".join(texts).strip()
+            normalized_text = normalize_code_switching_phonetics(full_text)
 
-            return full_text, info.language, info.language_probability
+            return normalized_text, info.language, info.language_probability
 
         except Exception as e:
             logger.error(f"Speech transcription error: {e}")

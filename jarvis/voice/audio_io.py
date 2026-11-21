@@ -86,13 +86,14 @@ def record_audio(
 
 def record_until_silence(
     max_seconds: float = 15.0,
-    silence_seconds: float = 1.5,
-    silence_threshold: int = 400,
+    silence_seconds: float = 1.1,
+    silence_threshold: int = 380,
     startup_silence_seconds: float = 4.0,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
 ) -> Path:
     """Record from default microphone until speech ends or timeout occurs.
 
+    Features dynamic ambient noise floor calibration and zero-clipping trailing trim.
     Returns the path to the saved WAV file.
     """
     in_dev, _ = get_default_devices()
@@ -107,6 +108,8 @@ def record_until_silence(
     frames: list[bytes] = []
     silence_count = 0
     has_spoken = False
+    calibrated_threshold = silence_threshold
+    ambient_samples: list[float] = []
 
     try:
         with sd.RawInputStream(
@@ -115,13 +118,22 @@ def record_until_silence(
             dtype="int16",
             blocksize=BLOCK_SIZE,
         ) as stream:
-            for _ in range(max_chunks):
+            for i in range(max_chunks):
                 raw, overflow = stream.read(BLOCK_SIZE)
                 data = bytes(raw)
                 frames.append(data)
 
                 amplitude = _calculate_rms(data)
-                if amplitude > silence_threshold:
+
+                # Calibrate noise floor in initial 6 blocks (~0.38s)
+                if i < 6 and not has_spoken:
+                    ambient_samples.append(amplitude)
+                    if len(ambient_samples) == 6:
+                        avg_ambient = sum(ambient_samples) / 6.0
+                        calibrated_threshold = max(silence_threshold, int(avg_ambient * 1.6 + 160))
+                        logger.debug(f"[AUDIO] Calibrated noise floor: {avg_ambient:.1f}, threshold: {calibrated_threshold}")
+
+                if amplitude > calibrated_threshold:
                     has_spoken = True
                     silence_count = 0
                 elif not has_spoken and len(frames) >= startup_silence_chunks:
@@ -130,7 +142,9 @@ def record_until_silence(
                 elif has_spoken:
                     silence_count += 1
                     if silence_count >= silence_chunks:
-                        # User stopped speaking
+                        # User stopped speaking; trim trailing silence to minimize latency
+                        keep_chunks = max(1, len(frames) - int(silence_chunks * 0.7))
+                        frames = frames[:keep_chunks]
                         break
     except Exception as e:
         raise RuntimeError(f"Microphone streaming error: {e}")
