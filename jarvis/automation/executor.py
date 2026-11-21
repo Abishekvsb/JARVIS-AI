@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any, Dict
 
-from jarvis.automation.app_controller import close_application, open_application
+from jarvis.automation.app_controller import close_application, open_application, send_whatsapp_message
 from jarvis.automation.browser_controller import control_media, open_url, search_google, search_youtube
 from jarvis.automation.file_search import find_files, open_file_safely
 from jarvis.automation.keyboard_controller import send_safe_hotkey, type_text, write_in_notepad
@@ -102,6 +102,13 @@ def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
 
         elif tool_name == "write_in_notepad":
             success, msg = write_in_notepad(content=tool_input.get("content", ""))
+            res = {"success": success, "message": msg}
+
+        elif tool_name == "send_whatsapp_message":
+            success, msg = send_whatsapp_message(
+                recipient=tool_input.get("recipient", ""),
+                message=tool_input.get("message", ""),
+            )
             res = {"success": success, "message": msg}
 
         else:

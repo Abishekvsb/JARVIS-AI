@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
+import urllib.parse
+import webbrowser
 import winreg
 from typing import Dict, List, Optional, Tuple
 
@@ -59,6 +62,11 @@ COMMON_APPS = {
     "powerpoint": "powerpnt.exe",
     "vscode": "code.cmd",
     "vs code": "code.cmd",
+    "whatsapp": "whatsapp:",
+    "whats app": "whatsapp:",
+    "watsapp": "whatsapp:",
+    "whatsapp desktop": "whatsapp:",
+    "whatsapp web": "https://web.whatsapp.com",
 }
 
 
@@ -97,7 +105,29 @@ def open_application(app_name: str) -> Tuple[bool, str]:
     # 1. Check known mappings
     target = COMMON_APPS.get(app_clean)
 
-    # 2. Check protocol handler (e.g. ms-settings:)
+    # Special handling for WhatsApp
+    if "whatsapp" in app_clean or app_clean in ("whats app", "watsapp"):
+        try:
+            os.startfile("whatsapp:")
+            return True, "Successfully opened WhatsApp Desktop, Sir."
+        except Exception:
+            try:
+                import webbrowser
+                webbrowser.open("https://web.whatsapp.com")
+                return True, "Opened WhatsApp Web in browser, Sir."
+            except Exception as e:
+                return False, f"Could not launch WhatsApp: {e}"
+
+    # Handle URLs (e.g. WhatsApp Web)
+    if target and (target.startswith("http://") or target.startswith("https://")):
+        try:
+            import webbrowser
+            webbrowser.open(target)
+            return True, f"Opened {app_name} in web browser, Sir."
+        except Exception as e:
+            return False, f"Could not open {app_name}: {e}"
+
+    # 2. Check protocol handler (e.g. ms-settings:, whatsapp:)
     if target and target.endswith(":"):
         try:
             os.startfile(target)
@@ -163,4 +193,37 @@ def close_application(app_name: str) -> Tuple[bool, str]:
     if closed_count > 0:
         return True, f"Successfully closed {closed_count} running instance(s) of '{app_name}'."
     return False, f"Could not terminate '{app_name}' due to system access restrictions."
+
+
+def send_whatsapp_message(recipient: str, message: str) -> Tuple[bool, str]:
+    """Open WhatsApp with a pre-filled or direct message to recipient or phone number."""
+    EmergencyStopManager.get_instance().assert_can_proceed()
+
+    clean_msg = message.strip()
+    clean_rec = recipient.strip()
+    if not clean_msg:
+        return False, "Message content cannot be empty."
+
+    encoded_text = urllib.parse.quote(clean_msg)
+
+    # Check if recipient contains a phone number
+    digits_only = re.sub(r"[^\d]", "", clean_rec)
+    if len(digits_only) >= 10:
+        if len(digits_only) == 10:
+            digits_only = f"91{digits_only}"
+
+        try:
+            os.startfile(f"whatsapp://send?phone={digits_only}&text={encoded_text}")
+            return True, f"Opened WhatsApp chat with {clean_rec} and drafted message: '{clean_msg}'."
+        except Exception:
+            webbrowser.open(f"https://web.whatsapp.com/send?phone={digits_only}&text={encoded_text}")
+            return True, f"Opened WhatsApp Web chat with {clean_rec} and drafted message: '{clean_msg}'."
+    else:
+        # Recipient is a contact name (e.g. Ramesh, Mom)
+        try:
+            os.startfile(f"whatsapp://send?text={encoded_text}")
+            return True, f"Opened WhatsApp with drafted message for {clean_rec}: '{clean_msg}'."
+        except Exception:
+            webbrowser.open(f"https://web.whatsapp.com/send?text={encoded_text}")
+            return True, f"Opened WhatsApp Web with drafted message for {clean_rec}: '{clean_msg}'."
 

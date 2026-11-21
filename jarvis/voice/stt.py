@@ -24,7 +24,9 @@ HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_INITIAL_PROMPT = (
     "JARVIS personal AI assistant. English, Tamil, and Tanglish conversations. "
-    "Examples: Vanakkam, epdi irukkinga, innaiku enna plan, enakku enna work irukku."
+    "Commands: WhatsApp, open WhatsApp, send WhatsApp message, message anupu, "
+    "screenshot eduthu, volume increase pannu, open notepad, Chrome, YouTube, "
+    "Vanakkam Sir, epdi irukkinga, innaiku enna plan, enakku enna work irukku."
 )
 
 

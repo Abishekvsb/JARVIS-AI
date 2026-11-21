@@ -202,6 +202,24 @@ AUTOMATION_TOOLS = [
         },
     },
     {
+        "name": "send_whatsapp_message",
+        "description": "Opens WhatsApp to send or draft a message to a contact name or phone number.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "recipient": {
+                    "type": "string",
+                    "description": "Name of contact (e.g. 'Ramesh', 'Mom') or phone number with country code (e.g. '+919876543210').",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Text message content to send.",
+                },
+            },
+            "required": ["recipient", "message"],
+        },
+    },
+    {
         "name": "emergency_stop",
         "description": "Immediately halts all automation and disengages active control.",
         "input_schema": {

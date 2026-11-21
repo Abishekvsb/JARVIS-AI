@@ -41,6 +41,7 @@ You have access to allowlisted desktop automation tools to control this Windows 
 - open_settings: Open Windows Settings pages.
 - write_in_notepad: Launch Notepad and write dictated notes.
 - type_text: Type or paste text safely into active window.
+- send_whatsapp_message: Open WhatsApp and send/draft messages to contact or phone number.
 - emergency_stop: Halt all automation immediately if requested.
 
 When the user gives a command in English, Tamil, or Tanglish:
@@ -52,6 +53,9 @@ When the user gives a command in English, Tamil, or Tanglish:
 def _rule_based_fallback_intent(prompt: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
     """Parse common desktop automation commands locally when offline or in fallback mode."""
     p = prompt.strip().lower()
+
+    # Normalize phonetic speech recognition variations
+    p = re.sub(r"what['\s]?s?\s*app|watsapp|watsup|வாட்ஸ்அப்", "whatsapp", p)
 
     # Greetings & Identity
     if any(k in p for k in ("who are you", "introduce yourself", "yaaru nee", "un peyar", "identify yourself")):
@@ -99,15 +103,31 @@ def _rule_based_fallback_intent(prompt: str) -> Optional[Tuple[str, str, Dict[st
         content = m.group(1).replace("pannu", "").strip() if m else "JARVIS voice dictation test note."
         return "write_in_notepad", {"content": content}, f"Opened Notepad and recorded your dictation, Sir."
 
+    # WhatsApp Open & Messaging
+    if "whatsapp" in p or "message" in p:
+        if any(k in p for k in ("message", "msg", "anupu", "send", "solu")):
+            m1 = re.search(r"([a-zA-Z0-9_\+]+)\s*ku\s+(?:whatsapp\s+(?:la\s+)?)?(?:message\s+)?(?:anupu\s*)?[:\s]*(.+)", p)
+            if not m1:
+                m1 = re.search(r"(?:to|for)\s+([a-zA-Z0-9_\+]+)\s*[:\s]+(.+)", p)
+            if m1:
+                rec = m1.group(1).replace("whatsapp", "").strip()
+                content = m1.group(2).replace("anupu", "").replace("pannu", "").replace("message", "").strip()
+                if rec and content:
+                    return "send_whatsapp_message", {"recipient": rec, "message": content}, f"Drafted WhatsApp message for {rec.title()}, Sir."
+            if "whatsapp" in p:
+                return "open_app", {"app_name": "whatsapp"}, "Opening WhatsApp for you, Sir."
+        elif any(k in p for k in ("open", "start", "launch", "thira", "thura", "vaa")):
+            return "open_app", {"app_name": "whatsapp"}, "Opening WhatsApp for you, Sir."
+
     # Application Launching
-    if any(k in p for k in ("open", "start", "launch", "thira")):
-        for app in ("notepad", "chrome", "calculator", "calc", "paint", "settings", "task manager", "edge", "explorer"):
+    if any(k in p for k in ("open", "start", "launch", "thira", "thura")):
+        for app in ("whatsapp", "notepad", "chrome", "calculator", "calc", "paint", "settings", "task manager", "edge", "explorer"):
             if app in p:
                 return "open_app", {"app_name": app}, f"Launching {app.title()}, Sir."
 
     # Application Closing
     if any(k in p for k in ("close", "exit", "terminate", "moodu")):
-        for app in ("notepad", "calculator", "calc", "paint", "chrome", "edge"):
+        for app in ("whatsapp", "notepad", "calculator", "calc", "paint", "chrome", "edge"):
             if app in p:
                 return "close_app", {"app_name": app}, f"Closing {app.title()}, Sir."
 
