@@ -41,3 +41,4 @@ The full source code for the standalone Android companion app is located in this
 - `AndroidManifest.xml`: Declares permissions and `NotificationListenerService`.
 - `app/src/main/java/com/jarvis/companion/JarvisNotificationListenerService.kt`: Intercepts WhatsApp, Telegram, SMS notifications and sends them securely via OkHttp.
 - `app/src/main/java/com/jarvis/companion/MainActivity.kt`: Pairing screen (IP and PIN).
+

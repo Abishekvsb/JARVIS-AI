@@ -178,3 +178,4 @@ class NotificationHub:
         """Clear all notification records."""
         self._notifications.clear()
         self._recent_signatures.clear()
+

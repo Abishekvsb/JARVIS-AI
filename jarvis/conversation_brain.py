@@ -131,14 +131,14 @@ class ConversationBrain:
             if target_match:
                 recipient = target_match.group(1).strip()
                 content = target_match.group(2).strip()
-                # Clean filler words
-                content = re.sub(r"\b(sollu|anupu|pannu|endru|that)\b", "", content, flags=re.IGNORECASE).strip()
+                # Clean filler words and punctuation
+                content = re.sub(r"\b(sollu|anupu|pannu|endru|that)\b", "", content, flags=re.IGNORECASE).strip(" .!?,:;")
                 if recipient and content:
                     return "REPLY_COMMAND", {"recipient": recipient, "message": content}
 
             # If recipient is omitted but active contact exists (e.g. "Good morning sollu")
             if self.state.active_contact:
-                clean_content = re.sub(r"\b(sollu|anupu|reply|send|tell him|tell her)\b", "", resolved_text, flags=re.IGNORECASE).strip()
+                clean_content = re.sub(r"\b(sollu|anupu|reply|send|tell him|tell her)\b", "", resolved_text, flags=re.IGNORECASE).strip(" .!?,:;")
                 if clean_content:
                     return "REPLY_COMMAND", {"recipient": self.state.active_contact, "message": clean_content}
 
@@ -257,3 +257,4 @@ class ConversationBrain:
             self.state.recent_responses.pop(0)
 
         return cleaned
+

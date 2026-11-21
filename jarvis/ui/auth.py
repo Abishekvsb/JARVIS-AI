@@ -99,14 +99,19 @@ class MobileAuthManager:
         if client_host in ("127.0.0.1", "localhost", "::1", "testclient"):
             return True
 
-        # Check X-Jarvis-Token header
-        header_token = request.headers.get("X-Jarvis-Token")
-        if header_token and self.is_token_valid(header_token):
+        # Check X-Jarvis-Token header (accepts either active token or valid pairing PIN)
+        header_token = (request.headers.get("X-Jarvis-Token") or "").strip()
+        if header_token and (self.is_token_valid(header_token) or header_token == self.pairing_pin):
+            return True
+
+        # Check X-Jarvis-PIN header
+        header_pin = (request.headers.get("X-Jarvis-PIN") or "").strip()
+        if header_pin and header_pin == self.pairing_pin:
             return True
 
         # Check jarvis_token cookie
         cookie_token = request.cookies.get("jarvis_token")
-        if cookie_token and self.is_token_valid(cookie_token):
+        if cookie_token and (self.is_token_valid(cookie_token) or cookie_token == self.pairing_pin):
             return True
 
         return False

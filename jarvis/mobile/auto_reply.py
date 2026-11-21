@@ -48,8 +48,11 @@ SECURITY_BLACKLIST = (
 
 # Standard greetings mapping
 STANDARD_GREETING_RULES = [
-    (r"^(?:hi|hey|hai|hello|vanakkam)\b[\s!.]*$", "Hi!"),
+    (r"^(?:hi|hey|hai|vanakkam)\b[\s!.]*$", "Hi!"),
+    (r"^(?:hello)\b[\s!.]*$", "Hello!"),
     (r"^(?:good\s*morning|gm|morning)\b[\s!.]*$", "Good morning! Have a great day."),
+    (r"^(?:good\s*afternoon)\b[\s!.]*$", "Good afternoon!"),
+    (r"^(?:good\s*evening|evening)\b[\s!.]*$", "Good evening! Hope you had a great day."),
     (r"^(?:good\s*night|gn|night)\b[\s!.]*$", "Good night! Take care."),
     (r"^(?:how\s*are\s*you|epdi\s*irukka|how\s*r\s*u)\b[\s!?.]*$", "I'm good, thank you! How are you?"),
     (r"^(?:are\s*you\s*busy|busy[?]?|busy\s*ah)\b[\s!?.]*$", "I'm currently busy right now. I'll get back to you soon."),
@@ -186,3 +189,4 @@ class AutoReplyEngine:
     def record_reply_sent(self, sender: str) -> None:
         """Mark contact cooldown upon successful auto-reply dispatch."""
         self._last_replied[sender.strip().lower()] = time.time()
+
