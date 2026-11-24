@@ -35,3 +35,10 @@ screenshots/
 # Runtime Data Storage
 data/*.json
 
+
+# Binaries
+bin/*.exe
+bin/koyeb.exe
+bin/LICENSE
+bin/README.md
+

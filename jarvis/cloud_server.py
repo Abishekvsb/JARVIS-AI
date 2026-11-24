@@ -73,7 +73,12 @@ class CloudAuthManager:
 
     def __init__(self) -> None:
         self.secret_key = os.environ.get("JARVIS_SECRET_KEY", "jarvis-stark-mark7-cloud-secure-key")
-        self.pairing_pin = os.environ.get("JARVIS_PAIRING_PIN", "280506")
+        env_pin = os.environ.get("JARVIS_PAIRING_PIN") or os.environ.get("JARVIS_AUTH_PIN")
+        # Ensure we never use or fall back to the previously exposed PIN '280506'
+        if env_pin and env_pin.strip() != "280506":
+            self.pairing_pin = env_pin.strip()
+        else:
+            self.pairing_pin = "560271"
         self.active_tokens: Dict[str, float] = {}
 
     @classmethod
@@ -83,7 +88,12 @@ class CloudAuthManager:
         return cls._instance
 
     def verify_pin(self, pin: str) -> Optional[str]:
-        if pin.strip() in (self.pairing_pin, self.secret_key):
+        cleaned = pin.strip()
+        # Explicit rejection of obsolete exposed PIN
+        if cleaned == "280506":
+            logger.warning("[AUTH] Login attempt with obsolete exposed PIN '280506' blocked.")
+            return None
+        if cleaned in (self.pairing_pin, self.secret_key):
             token = secrets.token_hex(24)
             self.active_tokens[token] = time.time() + (30 * 86400)  # 30 days validity
             return token
@@ -94,22 +104,22 @@ class CloudAuthManager:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-            if token in (self.secret_key, self.pairing_pin) or (token in self.active_tokens and time.time() < self.active_tokens[token]):
+            if token != "280506" and (token in (self.secret_key, self.pairing_pin) or (token in self.active_tokens and time.time() < self.active_tokens[token])):
                 return True
 
         # Check X-Jarvis-Token
         token = (request.headers.get("X-Jarvis-Token") or "").strip()
-        if token and (token in (self.secret_key, self.pairing_pin) or (token in self.active_tokens and time.time() < self.active_tokens[token])):
+        if token and token != "280506" and (token in (self.secret_key, self.pairing_pin) or (token in self.active_tokens and time.time() < self.active_tokens[token])):
             return True
 
         # Check X-Jarvis-PIN
         pin = (request.headers.get("X-Jarvis-PIN") or "").strip()
-        if pin and pin in (self.pairing_pin, self.secret_key):
+        if pin and pin != "280506" and pin in (self.pairing_pin, self.secret_key):
             return True
 
         # Check Cookie
         cookie = request.cookies.get("jarvis_token", "").strip()
-        if cookie and (cookie in (self.secret_key, self.pairing_pin) or (cookie in self.active_tokens and time.time() < self.active_tokens[cookie])):
+        if cookie and cookie != "280506" and (cookie in (self.secret_key, self.pairing_pin) or (cookie in self.active_tokens and time.time() < self.active_tokens[cookie])):
             return True
 
         return False
@@ -351,7 +361,7 @@ async def get_mobile_info(request: Request) -> Dict[str, Any]:
     return {
         "status": "success",
         "authenticated": is_authed,
-        "pairing_pin": auth.pairing_pin,
+        "pairing_pin": auth.pairing_pin if is_authed else "******",
         "server_mode": "cloud_24_7",
     }
 
