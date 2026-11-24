@@ -13,8 +13,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-# Base project paths
-JARVIS_ROOT = Path("D:/JARVIS").resolve()
+# Base project paths (dynamically adaptable for Windows host or Cloud Linux/Docker)
+JARVIS_ROOT = Path(os.environ.get("OPENJARVIS_HOME", Path(__file__).resolve().parent.parent)).resolve()
 ENV_FILE = JARVIS_ROOT / ".env"
 CACHE_DIR = JARVIS_ROOT / ".cache"
 

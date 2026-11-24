@@ -7,17 +7,24 @@ and interfaces with the Auto-Reply Engine.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from jarvis.config import JARVIS_ROOT
 from jarvis.conversation_brain import ConversationBrain
 from jarvis.mobile.auto_reply import AutoReplyEngine
 
 logger = logging.getLogger(__name__)
+
+STATE_DIR = JARVIS_ROOT / "data"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+NOTIFS_FILE = STATE_DIR / "notifications_cache.json"
 
 
 class NotificationPriority(str, Enum):
@@ -54,12 +61,41 @@ class NotificationHub:
         self._notifications: List[Notification] = []
         self._recent_signatures: Dict[str, float] = {}  # (app, sender, content) -> timestamp
         self.dedup_window_seconds = 10.0
+        self._load_cache()
 
     @classmethod
     def get_instance(cls) -> NotificationHub:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    def _load_cache(self) -> None:
+        try:
+            if NOTIFS_FILE.exists():
+                data = json.loads(NOTIFS_FILE.read_text(encoding="utf-8"))
+                for d in data[:self.max_history]:
+                    notif = Notification(
+                        id=d.get("id", f"notif_{uuid.uuid4().hex[:8]}"),
+                        app=d.get("app", "App"),
+                        sender=d.get("sender", "Unknown"),
+                        content=d.get("content", ""),
+                        timestamp=d.get("timestamp", time.time()),
+                        priority=NotificationPriority(d.get("priority", "MEDIUM")),
+                        read=d.get("read", False),
+                        auto_replied=d.get("auto_replied", False),
+                        auto_reply_text=d.get("auto_reply_text"),
+                    )
+                    self._notifications.append(notif)
+                logger.info(f"[NOTIF_HUB] Loaded {len(self._notifications)} persistent notifications from cache.")
+        except Exception as e:
+            logger.warning(f"[NOTIF_HUB] Could not load cache: {e}")
+
+    def _save_cache(self) -> None:
+        try:
+            items = [n.to_dict() for n in self._notifications[:self.max_history]]
+            NOTIFS_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"[NOTIF_HUB] Could not save cache: {e}")
 
     def classify_priority(self, app: str, sender: str, content: str) -> NotificationPriority:
         """Classify notification priority into HIGH, MEDIUM, or LOW."""
@@ -140,18 +176,21 @@ class NotificationHub:
             notif.auto_reply_text = reply_text
             reply_engine.record_reply_sent(notif.sender)
             logger.info(f"[NOTIF_HUB] Auto-replying to {notif.sender}: '{reply_text}' (Reason: {reply_reason})")
-            # Trigger dispatch via WhatsApp automation if app is WhatsApp
-            try:
-                from jarvis.automation.executor import execute_tool
-                execute_tool("send_whatsapp_message", {"recipient": notif.sender, "message": reply_text})
-            except Exception as e:
-                logger.error(f"[NOTIF_HUB] Failed to dispatch auto-reply: {e}")
+            # If running on local Windows desktop with automation available, stage desktop message
+            import sys
+            if sys.platform == "win32":
+                try:
+                    from jarvis.automation.executor import execute_tool
+                    execute_tool("send_whatsapp_message", {"recipient": notif.sender, "message": reply_text})
+                except Exception as e:
+                    logger.debug(f"[NOTIF_HUB] Desktop WhatsApp dispatch skipped: {e}")
 
         # 6. Store in history (newest first)
         self._notifications.insert(0, notif)
         if len(self._notifications) > self.max_history:
             self._notifications.pop()
 
+        self._save_cache()
         return True, notif, "Notification ingested successfully."
 
     def get_notifications(self, unread_only: bool = False, limit: int = 50) -> List[Dict[str, Any]]:
@@ -172,10 +211,13 @@ class NotificationHub:
             if not n.read:
                 n.read = True
                 count += 1
+        if count > 0:
+            self._save_cache()
         return count
 
     def clear(self) -> None:
         """Clear all notification records."""
         self._notifications.clear()
         self._recent_signatures.clear()
+        self._save_cache()
 

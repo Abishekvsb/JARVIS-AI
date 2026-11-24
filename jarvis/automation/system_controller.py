@@ -48,10 +48,15 @@ SETTINGS_PAGES = {
 
 
 def _send_vk(vk_code: int) -> None:
+    if not hasattr(ctypes, "windll"):
+        return
     KEYEVENTF_EXTENDEDKEY = 0x0001
     KEYEVENTF_KEYUP = 0x0002
-    ctypes.windll.user32.keybd_event(vk_code, 0, KEYEVENTF_EXTENDEDKEY, 0)
-    ctypes.windll.user32.keybd_event(vk_code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+    try:
+        ctypes.windll.user32.keybd_event(vk_code, 0, KEYEVENTF_EXTENDEDKEY, 0)
+        ctypes.windll.user32.keybd_event(vk_code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+    except Exception as e:
+        logger.warning(f"Could not send virtual keycode {vk_code}: {e}")
 
 
 def change_volume(action: str, steps: int = 5) -> Tuple[bool, str]:
@@ -94,6 +99,8 @@ class BITMAPINFOHEADER(ctypes.Structure):
 
 def _gdi_screenshot(output_path: Path) -> Tuple[int, int]:
     """Capture Windows desktop screen directly using GDI BitBlt."""
+    if not hasattr(ctypes, "windll"):
+        raise RuntimeError("GDI screenshot only available on Windows display.")
     user32 = ctypes.windll.user32
     gdi32 = ctypes.windll.gdi32
 
@@ -163,7 +170,12 @@ def get_system_telemetry() -> Dict[str, Any]:
         plugged_str = "Plugged in (Charging)" if battery.power_plugged else "Running on Battery"
         battery_info = f"{battery.percent}% - {plugged_str}"
 
-    disk_c = psutil.disk_usage("C:")
+    try:
+        disk_c = psutil.disk_usage("C:") if os.path.exists("C:") else psutil.disk_usage("/")
+        c_free = f"{disk_c.free / (1024**3):.1f} GB"
+    except Exception:
+        c_free = "N/A"
+
     disk_d = psutil.disk_usage("D:") if os.path.exists("D:") else None
 
     return {
@@ -172,7 +184,7 @@ def get_system_telemetry() -> Dict[str, Any]:
         "memory_total_gb": f"{mem.total / (1024**3):.1f} GB",
         "memory_percent": f"{mem.percent}%",
         "battery": battery_info,
-        "disk_c_free_gb": f"{disk_c.free / (1024**3):.1f} GB",
+        "disk_c_free_gb": c_free,
         "disk_d_free_gb": f"{disk_d.free / (1024**3):.1f} GB" if disk_d else "N/A",
     }
 

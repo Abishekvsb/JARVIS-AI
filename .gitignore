@@ -31,3 +31,7 @@ screenshots/
 .emergency_stop
 
 
+
+# Runtime Data Storage
+data/*.json
+

@@ -10,20 +10,29 @@ import logging
 import time
 from typing import List, Tuple
 
-import pyautogui
-import pygetwindow as gw
-import pyperclip
+try:
+    import pyautogui
+    # Disable PyAutoGUI corner fail-safe in automation backend to prevent false aborts
+    # when session mouse position rests at (0, 0).
+    pyautogui.FAILSAFE = False
+    pyautogui.PAUSE = 0.05
+except Exception as e:
+    pyautogui = None
+
+try:
+    import pygetwindow as gw
+except Exception:
+    gw = None
+
+try:
+    import pyperclip
+except Exception:
+    pyperclip = None
 
 from jarvis.automation.app_controller import open_application
 from jarvis.automation.safety import EmergencyStopManager
 
 logger = logging.getLogger(__name__)
-
-# Disable PyAutoGUI corner fail-safe in automation backend to prevent false aborts
-# when session mouse position rests at (0, 0).
-# Safety is enforced strictly via EmergencyStopManager and ALLOWED_SHORTCUTS.
-pyautogui.FAILSAFE = False
-pyautogui.PAUSE = 0.05
 
 ALLOWED_SHORTCUTS = {
     ("ctrl", "c"),
@@ -49,6 +58,9 @@ def type_text(text: str, press_enter: bool = False) -> Tuple[bool, str]:
     Uses clipboard paste for Unicode (e.g. Tamil) to ensure correct character representation.
     """
     EmergencyStopManager.get_instance().assert_can_proceed()
+
+    if pyautogui is None:
+        return False, "Desktop keyboard automation is not supported in this headless/cloud environment."
 
     if not text:
         return False, "Text to type cannot be empty."
@@ -81,6 +93,9 @@ def type_text(text: str, press_enter: bool = False) -> Tuple[bool, str]:
 def send_safe_hotkey(keys: List[str]) -> Tuple[bool, str]:
     """Send an allowlisted keyboard shortcut."""
     EmergencyStopManager.get_instance().assert_can_proceed()
+
+    if pyautogui is None:
+        return False, "Desktop keyboard shortcuts not supported in this headless/cloud environment."
 
     clean_keys = tuple(k.strip().lower() for k in keys)
     if clean_keys not in ALLOWED_SHORTCUTS:

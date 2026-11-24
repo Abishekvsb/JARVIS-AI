@@ -10,13 +10,21 @@ Enforces:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from jarvis.config import JARVIS_ROOT
+
 logger = logging.getLogger(__name__)
+
+STATE_DIR = JARVIS_ROOT / "data"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+CONFIG_FILE = STATE_DIR / "auto_reply_config.json"
 
 # Security sensitive keywords: Never auto-reply to these under any circumstance
 SECURITY_BLACKLIST = (
@@ -82,12 +90,43 @@ class AutoReplyEngine:
         self.config = config or AutoReplyConfig()
         # Contact cooldown tracker: sender_key -> last_replied_timestamp
         self._last_replied: Dict[str, float] = {}
+        if config is None:
+            self._load_state()
 
     @classmethod
     def get_instance(cls) -> AutoReplyEngine:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    def _load_state(self) -> None:
+        try:
+            if CONFIG_FILE.exists():
+                data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                self.config.enabled = data.get("enabled", False)
+                self.config.greeting_auto_reply_enabled = data.get("greeting_auto_reply_enabled", False)
+                if "allowed_apps" in data:
+                    self.config.allowed_apps = set(data["allowed_apps"])
+                if "allowed_contacts" in data:
+                    self.config.allowed_contacts = data["allowed_contacts"]
+                if "cooldown_seconds" in data:
+                    self.config.cooldown_seconds = data["cooldown_seconds"]
+                logger.info(f"[AUTO-REPLY] Loaded persistent config: enabled={self.config.enabled}")
+        except Exception as e:
+            logger.warning(f"[AUTO-REPLY] Could not load state: {e}")
+
+    def _save_state(self) -> None:
+        try:
+            payload = {
+                "enabled": self.config.enabled,
+                "greeting_auto_reply_enabled": self.config.greeting_auto_reply_enabled,
+                "allowed_apps": list(self.config.allowed_apps),
+                "allowed_contacts": self.config.allowed_contacts,
+                "cooldown_seconds": self.config.cooldown_seconds,
+            }
+            CONFIG_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"[AUTO-REPLY] Could not save state: {e}")
 
     def update_config(self, **kwargs) -> None:
         """Update configuration parameters at runtime."""
@@ -97,6 +136,7 @@ class AutoReplyEngine:
                     setattr(self.config, k, set(v))
                 else:
                     setattr(self.config, k, v)
+        self._save_state()
         logger.info(f"[AUTO-REPLY] Config updated: enabled={self.config.enabled}, greetings={self.config.greeting_auto_reply_enabled}")
 
     def is_security_sensitive(self, text: str) -> bool:

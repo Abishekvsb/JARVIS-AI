@@ -144,8 +144,11 @@ def open_application(app_name: str) -> Tuple[bool, str]:
         target = f"{app_clean}.exe"
 
     try:
-        # Use os.startfile for native Windows shell execution without cmd.exe
-        os.startfile(target)
+        # Use os.startfile on Windows, or subprocess on other platforms
+        if hasattr(os, "startfile"):
+            os.startfile(target)
+        else:
+            subprocess.Popen([target])
         return True, f"Successfully launched {app_name} ({target})."
     except FileNotFoundError:
         return False, f"Application '{app_name}' was not found on your system."
@@ -213,17 +216,22 @@ def send_whatsapp_message(recipient: str, message: str) -> Tuple[bool, str]:
             digits_only = f"91{digits_only}"
 
         try:
-            os.startfile(f"whatsapp://send?phone={digits_only}&text={encoded_text}")
-            return True, f"Opened WhatsApp chat with {clean_rec} and drafted message: '{clean_msg}'."
-        except Exception:
-            webbrowser.open(f"https://web.whatsapp.com/send?phone={digits_only}&text={encoded_text}")
-            return True, f"Opened WhatsApp Web chat with {clean_rec} and drafted message: '{clean_msg}'."
+            if hasattr(os, "startfile"):
+                os.startfile(f"whatsapp://send?phone={digits_only}&text={encoded_text}")
+                return True, f"Opened WhatsApp chat with {clean_rec} and drafted message: '{clean_msg}'."
+            else:
+                webbrowser.open(f"https://web.whatsapp.com/send?phone={digits_only}&text={encoded_text}")
+                return True, f"Opened WhatsApp Web chat with {clean_rec} and drafted message: '{clean_msg}'."
+        except Exception as e:
+            return False, f"Could not open WhatsApp for {clean_rec}: {e}"
     else:
         # Recipient is a contact name (e.g. Ramesh, Mom)
         try:
-            os.startfile(f"whatsapp://send?text={encoded_text}")
-            return True, f"Opened WhatsApp with drafted message for {clean_rec}: '{clean_msg}'."
-        except Exception:
-            webbrowser.open(f"https://web.whatsapp.com/send?text={encoded_text}")
-            return True, f"Opened WhatsApp Web with drafted message for {clean_rec}: '{clean_msg}'."
-
+            if hasattr(os, "startfile"):
+                os.startfile(f"whatsapp://send?text={encoded_text}")
+                return True, f"Opened WhatsApp with drafted message for {clean_rec}: '{clean_msg}'."
+            else:
+                webbrowser.open(f"https://web.whatsapp.com/send?text={encoded_text}")
+                return True, f"Opened WhatsApp Web with drafted message for {clean_rec}: '{clean_msg}'."
+        except Exception as e:
+            return False, f"Could not open WhatsApp for {clean_rec}: {e}"

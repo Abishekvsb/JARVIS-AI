@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  jarvis-backend:
+    build:
+      context: ..
+      dockerfile: cloud_deploy/Dockerfile
+    container_name: jarvis-cloud-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - JARVIS_SECRET_KEY=stark-cloud-secure-key-77
+      - JARVIS_PAIRING_PIN=280506
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=claude-3-5-haiku-20241022
+    volumes:
+      - jarvis-cloud-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  jarvis-cloud-data:
+    driver: local
+
